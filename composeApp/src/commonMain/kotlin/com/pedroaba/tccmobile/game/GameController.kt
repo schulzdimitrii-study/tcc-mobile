@@ -5,11 +5,14 @@ import com.pedroaba.tccmobile.game.logic.RunCalculator
 import com.pedroaba.tccmobile.game.models.BiofeedbackSample
 import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.models.SessionConfig
+import com.pedroaba.tccmobile.game.telemetry.model.EscapeMetrics
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-class GameController {
+class GameController(
+    private val timeProviderMs: () -> Long = { 0L }
+) {
     private val calculator = RunCalculator()
     
     private val _snapshot = MutableStateFlow(GameSnapshot())
@@ -23,9 +26,15 @@ class GameController {
 
     private val _lastSample = MutableStateFlow<BiofeedbackSample?>(null)
     val lastSample: StateFlow<BiofeedbackSample?> = _lastSample.asStateFlow()
+
+    private val _lastEscapeMetrics = MutableStateFlow<EscapeMetrics?>(null)
+    val lastEscapeMetrics: StateFlow<EscapeMetrics?> = _lastEscapeMetrics.asStateFlow()
     
     private var currentConfig: SessionConfig? = null
     private var _isActive: MutableStateFlow<Boolean> = MutableStateFlow(false)
+    private var lastTelemetryTimestampMs: Long? = null
+    private var lastAppliedGameplayTimestampMs: Long? = null
+    private var sessionStartedAtMs: Long? = null
 
     val isActive: StateFlow<Boolean> = _isActive.asStateFlow()
 
@@ -49,12 +58,16 @@ class GameController {
         currentConfig = config
         _sessionConfig.value = config
         _isActive.value = true
+        sessionStartedAtMs = timeProviderMs()
         _snapshot.value = GameSnapshot(
             distance = config.initialDistance,
             hordePressure = 1.0,
             risk = 1.0,
             result = "running"
         )
+        _lastEscapeMetrics.value = null
+        lastTelemetryTimestampMs = null
+        lastAppliedGameplayTimestampMs = null
         GameDebugLogger.log(
             tag = "session",
             "event" to "started",
@@ -66,6 +79,9 @@ class GameController {
 
     fun stopSession() {
         _isActive.value = false
+        lastTelemetryTimestampMs = null
+        lastAppliedGameplayTimestampMs = null
+        sessionStartedAtMs = null
         GameDebugLogger.log(
             tag = "session",
             "event" to "stopped",
@@ -120,5 +136,69 @@ class GameController {
             )
             stopSession()
         }
+    }
+
+    fun applyEscapeMetrics(metrics: EscapeMetrics) {
+        if (!_isActive.value) {
+            _lastEscapeMetrics.value = metrics
+            return
+        }
+
+        val config = currentConfig ?: return
+        val lastAppliedAt = lastAppliedGameplayTimestampMs
+        val nowMs = timeProviderMs()
+        if (lastAppliedAt != null && (nowMs - lastAppliedAt) < 900L) {
+            _lastEscapeMetrics.value = metrics
+            lastTelemetryTimestampMs = metrics.timestampMs
+            return
+        }
+
+        val current = _snapshot.value
+        val deltaSeconds = lastAppliedAt
+            ?.let { previousTimestamp ->
+                ((nowMs - previousTimestamp) / 1000.0).coerceAtLeast(0.0)
+            }
+            ?.takeIf { it > 0.0 }
+            ?: 1.0
+        val elapsedSeconds = sessionStartedAtMs
+            ?.let { startedAt ->
+                ((nowMs - startedAt) / 1000.0).coerceAtLeast(0.0)
+            }
+            ?: (current.elapsedSeconds + deltaSeconds)
+
+        _lastEscapeMetrics.value = metrics
+        lastTelemetryTimestampMs = metrics.timestampMs
+        lastAppliedGameplayTimestampMs = nowMs
+
+        val nextSnapshot = calculator.calculateSnapshotFromEscapeMetrics(
+            currentDistance = current.distance,
+            elapsedSeconds = elapsedSeconds - deltaSeconds,
+            deltaSeconds = deltaSeconds,
+            metrics = metrics,
+            config = config
+        )
+        _snapshot.value = nextSnapshot
+
+        GameDebugLogger.log(
+            tag = "escape-metrics",
+            "timestampMs" to metrics.timestampMs,
+            "strategy" to metrics.strategy.name,
+            "movementScore" to metrics.movementScore,
+            "distanceMeters" to metrics.distanceMeters,
+            "speedMetersPerSecond" to metrics.speedMetersPerSecond,
+            "accelerationMetersPerSecondSquared" to metrics.accelerationMetersPerSecondSquared,
+            "snapshotDistance" to nextSnapshot.distance,
+            "runnerVelocity" to nextSnapshot.runnerVelocity,
+            "hordeVelocity" to nextSnapshot.hordeVelocity,
+            "result" to nextSnapshot.result
+        )
+
+        if (nextSnapshot.result == "escaped" || nextSnapshot.result == "caught") {
+            stopSession()
+        }
+    }
+
+    fun updateEscapeMetrics(metrics: EscapeMetrics) {
+        applyEscapeMetrics(metrics)
     }
 }

@@ -29,6 +29,7 @@ kotlin {
             implementation(libs.androidx.core.ktx)
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
+            implementation(libs.play.services.location)
         }
         commonMain.dependencies {
             implementation(libs.compose.runtime)

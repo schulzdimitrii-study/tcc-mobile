@@ -1,7 +1,6 @@
 package com.pedroaba.tccmobile
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -16,16 +15,24 @@ import androidx.compose.ui.tooling.preview.Preview
 import com.pedroaba.tccmobile.game.GameController
 import com.pedroaba.tccmobile.game.KorgeGameView
 import com.pedroaba.tccmobile.game.debug.GameDebugLogger
-import com.pedroaba.tccmobile.game.models.BiofeedbackSample
 import com.pedroaba.tccmobile.game.models.SessionConfig
-import com.pedroaba.tccmobile.game.simulation.BiofeedbackSimulator
-import com.pedroaba.tccmobile.game.simulation.SimulationMode
-import kotlinx.coroutines.delay
+import com.pedroaba.tccmobile.game.telemetry.model.TelemetrySessionStatus
+import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
+import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 
 @Composable
 @Preview
-fun App() {
+fun App(
+    telemetryStateFlow: StateFlow<TelemetryState>? = null,
+    hasLocationPermission: Boolean = false,
+    currentTimeMsProvider: () -> Long = { 0L },
+    onRequestLocationPermission: (() -> Unit)? = null,
+    onStartTelemetrySession: (() -> Unit)? = null,
+    onPauseTelemetrySession: (() -> Unit)? = null,
+    onResumeTelemetrySession: (() -> Unit)? = null,
+    onStopTelemetrySession: (() -> Unit)? = null
+) {
     MaterialTheme(
         colorScheme = darkColorScheme(
             primary = Color(0xFFBB86FC),
@@ -35,42 +42,40 @@ fun App() {
             onSurface = Color.White
         )
     ) {
-        val gameController = remember { GameController() }
+        val gameController = remember { GameController(timeProviderMs = currentTimeMsProvider) }
         val snapshot by gameController.snapshot.collectAsState()
         val isSceneLoading by gameController.isSceneLoading.collectAsState()
-        val lastSample by gameController.lastSample.collectAsState()
+        val lastEscapeMetrics by gameController.lastEscapeMetrics.collectAsState()
         val isActive by gameController.isActive.collectAsState()
-        
-        var bpm by remember { mutableStateOf(120f) }
-        var cadence by remember { mutableStateOf(170f) }
-        var simulationMode by remember { mutableStateOf(SimulationMode.INTERVAL) }
-        
-        // Simulation loop
-        LaunchedEffect(gameController.isActive, simulationMode, bpm, cadence) {
-            while (isActive) {
-                val elapsedSeconds = snapshot.elapsedSeconds.toInt()
-                val sample = BiofeedbackSimulator.generateSample(
-                    mode = simulationMode,
-                    elapsedSeconds = elapsedSeconds,
-                    manualBpm = bpm.toInt(),
-                    manualCadence = cadence.toInt(),
-                    config = debugSessionConfig,
-                    timestampMs = (elapsedSeconds + 1L) * 1000L
-                )
+        val telemetryState = telemetryStateFlow?.collectAsState()?.value ?: TelemetryState()
 
-                GameDebugLogger.log(
-                    tag = "simulation-loop",
-                    "mode" to simulationMode.label,
-                    "elapsedSeconds" to elapsedSeconds,
-                    "bpm" to sample.bpm,
-                    "cadence" to sample.cadence,
-                    "timestampMs" to sample.timestampMs
-                )
+        LaunchedEffect(telemetryState.latestEscapeMetrics) {
+            telemetryState.latestEscapeMetrics?.let(gameController::applyEscapeMetrics)
+        }
 
-                gameController.sendBiofeedback(
-                    sample
-                )
-                delay(1000) // 1Hz update
+        LaunchedEffect(telemetryState.session.status) {
+            when (telemetryState.session.status) {
+                TelemetrySessionStatus.RUNNING -> {
+                    if (!isActive) {
+                        gameController.startSession(gameSessionConfig)
+                    }
+                }
+                TelemetrySessionStatus.IDLE,
+                TelemetrySessionStatus.STOPPED -> {
+                    if (isActive) {
+                        gameController.stopSession()
+                    }
+                }
+                TelemetrySessionStatus.PAUSED -> Unit
+            }
+        }
+
+        LaunchedEffect(snapshot.result, isActive, telemetryState.session.status) {
+            val telemetryRunning = telemetryState.session.status == TelemetrySessionStatus.RUNNING ||
+                telemetryState.session.status == TelemetrySessionStatus.PAUSED
+
+            if (!isActive && telemetryRunning && (snapshot.result == "escaped" || snapshot.result == "caught")) {
+                onStopTelemetrySession?.invoke()
             }
         }
 
@@ -128,39 +133,22 @@ fun App() {
                         .verticalScroll(rememberScrollState())
                 ) {
                     Text(
-                        "DEBUG CONTROLS",
+                        "SESSION STATUS",
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.padding(bottom = 8.dp)
                     )
 
-                    SimulationModeSelector(
-                        selectedMode = simulationMode,
-                        onModeSelected = { simulationMode = it }
+                    StatusDisplay(snapshot = snapshot)
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(
+                        "GAME SESSION",
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 8.dp)
                     )
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    if (simulationMode == SimulationMode.CUSTOM) {
-                        DebugSlider(
-                            label = "BPM",
-                            value = bpm,
-                            range = 60f..200f,
-                            onValueChange = { bpm = it }
-                        )
-
-                        DebugSlider(
-                            label = "Cadence",
-                            value = cadence,
-                            range = 50f..200f,
-                            onValueChange = { cadence = it }
-                        )
-                    } else {
-                        SimulationTelemetryCard(
-                            simulationMode = simulationMode,
-                            sample = lastSample
-                        )
-                    }
 
                     Spacer(modifier = Modifier.height(16.dp))
 
@@ -175,9 +163,9 @@ fun App() {
                             }
 
                             if (isActive) {
-                                gameController.stopSession()
+                                onStopTelemetrySession?.invoke()
                             } else {
-                                gameController.startSession(debugSessionConfig)
+                                onStartTelemetrySession?.invoke()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -194,27 +182,23 @@ fun App() {
                     Spacer(modifier = Modifier.height(12.dp))
 
                     SessionSignalCard(
-                        sample = lastSample,
+                        telemetryState = telemetryState,
                         snapshot = snapshot
                     )
 
-                    Spacer(modifier = Modifier.height(24.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                    Text(
-                        "SESSION STATUS",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(bottom = 8.dp)
+                    TelemetryStatusCard(
+                        telemetryState = telemetryState,
+                        lastEscapeMetricsLabel = lastEscapeMetrics?.movementScore?.let { "${(it * 100).roundToInt()}%" } ?: "--"
                     )
-
-                    StatusDisplay(snapshot = snapshot)
                 }
             }
         }
     }
 }
 
-private val debugSessionConfig = SessionConfig(
+private val gameSessionConfig = SessionConfig(
     goalDistance = 1000.0,
     sessionDurationSeconds = 90.0,
     initialDistance = 500.0,
@@ -223,71 +207,8 @@ private val debugSessionConfig = SessionConfig(
 )
 
 @Composable
-fun DebugSlider(
-    label: String,
-    value: Float,
-    range: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit
-) {
-    Column(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(label, style = MaterialTheme.typography.bodyMedium)
-            Text("${value.toInt()}", fontWeight = FontWeight.Bold)
-        }
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = range,
-            modifier = Modifier.fillMaxWidth()
-        )
-    }
-}
-
-@Composable
-fun SimulationModeSelector(
-    selectedMode: SimulationMode,
-    onModeSelected: (SimulationMode) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .horizontalScroll(rememberScrollState()),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        SimulationMode.entries.forEach { mode ->
-            FilterChip(
-                selected = mode == selectedMode,
-                onClick = { onModeSelected(mode) },
-                label = { Text(mode.label) }
-            )
-        }
-    }
-}
-
-@Composable
-fun SimulationTelemetryCard(
-    simulationMode: SimulationMode,
-    sample: BiofeedbackSample?
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
-    ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            StatusRow("Simulation", simulationMode.label)
-            StatusRow("Input BPM", sample?.bpm?.toString() ?: "--")
-            StatusRow("Input Cadence", sample?.cadence?.toString() ?: "--")
-            StatusRow("Sample Time", sample?.timestampMs?.toString() ?: "--")
-        }
-    }
-}
-
-@Composable
 fun SessionSignalCard(
-    sample: BiofeedbackSample?,
+    telemetryState: TelemetryState,
     snapshot: com.pedroaba.tccmobile.game.models.GameSnapshot
 ) {
     Card(
@@ -295,11 +216,51 @@ fun SessionSignalCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            StatusRow("Current BPM", sample?.bpm?.toString() ?: "--")
-            StatusRow("Current Cadence", sample?.cadence?.toString() ?: "--")
+            StatusRow("Session", telemetryState.session.status.name)
+            StatusRow("Telemetry Speed", telemetryState.latestSample?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
+            StatusRow("Telemetry Distance", telemetryState.latestSample?.totalDistanceMeters?.roundToInt()?.toString() ?: "--")
             StatusRow("Runner Vel.", formatOneDecimal(snapshot.runnerVelocity))
             StatusRow("Horde Vel.", formatOneDecimal(snapshot.hordeVelocity))
             StatusRow("Elapsed", "${snapshot.elapsedSeconds.roundToInt()}s")
+        }
+    }
+}
+
+@Composable
+fun TelemetryStatusCard(
+    telemetryState: TelemetryState,
+    lastEscapeMetricsLabel: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                "MOVEMENT METRICS",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            val sample = telemetryState.latestSample
+            val metrics = telemetryState.latestEscapeMetrics
+
+            StatusRow("Distance", sample?.totalDistanceMeters?.roundToInt()?.let { "${it}m" } ?: "--")
+            StatusRow("Speed", sample?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
+            StatusRow("Acceleration", sample?.effectiveAccelerationMetersPerSecondSquared?.let(::formatOneDecimal) ?: "--")
+            StatusRow("Confidence", sample?.movementConfidence?.let { "${(it * 100).roundToInt()}%" } ?: "--")
+            StatusRow("Escape Score", lastEscapeMetricsLabel)
+            StatusRow("Normalized Speed", metrics?.normalizedSpeed?.let { "${(it * 100).roundToInt()}%" } ?: "--")
+            StatusRow("Normalized Distance", metrics?.normalizedDistance?.let { "${(it * 100).roundToInt()}%" } ?: "--")
+
+            val issuesLabel = telemetryState.availability.issues
+                .filterNot { it.name == "WATCH_UNAVAILABLE" }
+                .joinToString()
+                .ifEmpty { "none" }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            StatusRow("Issues", issuesLabel)
         }
     }
 }

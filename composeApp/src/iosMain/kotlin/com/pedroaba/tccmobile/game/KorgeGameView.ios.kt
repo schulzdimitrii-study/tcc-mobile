@@ -12,6 +12,7 @@ import androidx.compose.ui.text.style.TextAlign
 @Composable
 actual fun KorgeGameView(
     controller: GameController,
+    isActive: Boolean,
     modifier: Modifier
 ) {
     Box(

@@ -6,9 +6,14 @@ import com.pedroaba.tccmobile.features.auth.screens.LoginScreen
 import com.pedroaba.tccmobile.theme.TccMobileTheme
 
 @Composable
-@Preview
-fun App() {
+fun App(content: @Composable () -> Unit = { LoginScreen() }) {
     TccMobileTheme {
-        LoginScreen()
+        content()
     }
+}
+
+@Composable
+@Preview
+private fun AppPreview() {
+    App()
 }

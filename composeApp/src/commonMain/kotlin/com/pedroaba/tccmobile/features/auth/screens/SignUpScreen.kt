@@ -74,8 +74,8 @@ fun SignupScreen(
         val trimmedName = name.trim()
         val digits = birthDate.filter { it.isDigit() }
 
-        emailError = if (isValidEmail(trimmedEmail)) null else "E-mail invalido"
-        nameError = if (trimmedName.isNotBlank()) null else "Nome invalido"
+        emailError = if (isValidEmail(trimmedEmail)) null else "E-mail inválido"
+        nameError = if (trimmedName.isNotBlank()) null else "Nome inválido"
         passwordError = if (password.isNotBlank()) null else "Informe a senha"
 
         if (emailError == null && nameError == null && passwordError == null) {
@@ -105,12 +105,12 @@ fun SignupScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             AppHero("Crie sua conta.")
-            AppBody("Cadastre os dados do usuário para personalizar zonas cardiacas e metricas iniciais.")
+            AppBody("Cadastre os dados do usuário para personalizar zonas cardíacas e métricas iniciais.")
 
             AppCard {
                 AppCardHeader {
                     AppCardTitle("Criar conta")
-                    AppCardSubtitle("Preencha apenas campos existentes no cadastro do usuário.")
+                    AppCardSubtitle("Preencha apenas os campos existentes no cadastro do usuário.")
                 }
 
                 AppCardContent(

@@ -22,6 +22,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.pedroaba.tccmobile.features.auth.screens.AuthLoadingScreen
 import com.pedroaba.tccmobile.auth.AuthManager
 import com.pedroaba.tccmobile.auth.AuthResult
 import com.pedroaba.tccmobile.auth.AuthState
@@ -32,7 +33,6 @@ import com.pedroaba.tccmobile.features.home.screens.HomeScreen
 import com.pedroaba.tccmobile.telemetry.service.AndroidTelemetryRuntime
 import com.pedroaba.tccmobile.telemetry.service.TelemetryForegroundService
 import com.pedroaba.tccmobile.telemetry.service.TelemetryRuntimeProvider
-import com.pedroaba.tccmobile.theme.TccMobileTheme
 import com.pedroaba.tccmobile.ui.components.navigation.FloatingTabBar
 import kotlinx.coroutines.launch
 
@@ -78,7 +78,7 @@ class MainActivity : ComponentActivity() {
         Log.d(TAG, "App started, checking auth state...")
 
         setContent {
-            TccMobileTheme {
+            App {
                 val authState by authManager.authState.collectAsStateWithLifecycle()
 
                 Surface(
@@ -88,6 +88,7 @@ class MainActivity : ComponentActivity() {
                     when (val state = authState) {
                         is AuthState.Loading -> {
                             Log.d(TAG, "Auth state: Loading")
+                            AuthLoadingScreen()
                         }
                         is AuthState.Unauthenticated -> {
                             Log.d(TAG, "Auth state: Unauthenticated")
@@ -116,7 +117,11 @@ class MainActivity : ComponentActivity() {
                         }
                         is AuthState.Authenticated -> {
                             Log.d(TAG, "Auth state: Authenticated as ${state.session.email}")
-                            MainGameScreenContent()
+                            MainAppNavigation(
+                                telemetryStateFlow = telemetryRuntime.repository.telemetryState,
+                                onStartTelemetry = ::ensurePermissionsAndStartTelemetry,
+                                onStopTelemetry = ::stopTelemetrySession
+                            )
                         }
                     }
                 }
@@ -155,27 +160,97 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun MainGameScreenContent() {
+    private fun MainAppNavigation(
+        telemetryStateFlow: kotlinx.coroutines.flow.StateFlow<com.pedroaba.tccmobile.game.telemetry.model.TelemetryState>,
+        onStartTelemetry: () -> Unit,
+        onStopTelemetry: () -> Unit
+    ) {
+        var currentTab by remember { mutableStateOf("home") }
+        var showWatchModal by remember { mutableStateOf(false) }
+
         Box(modifier = Modifier.fillMaxSize()) {
             when (currentTab) {
-                "home" -> HomeScreen(
-                    onStartRun = ::ensurePermissionsAndStartTelemetry,
-                    onViewProfile = { /* TODO */ },
-                    onContinueMission = { /* TODO */ }
-                )
-                "game" -> GameScreen(
-                    telemetryStateFlow = telemetryRuntime.repository.telemetryState,
-                    currentTimeMsProvider = { SystemClock.elapsedRealtime() },
-                    onStartTelemetrySession = ::ensurePermissionsAndStartTelemetry,
-                    onStopTelemetrySession = ::stopTelemetrySession
-                )
-                else -> HomeScreen(
-                    onStartRun = ::ensurePermissionsAndStartTelemetry,
-                    onViewProfile = { /* TODO */ },
-                    onContinueMission = { /* TODO */ }
-                )
+                "home" -> {
+                    if (showWatchModal) {
+                        com.pedroaba.tccmobile.features.home.screens.HomeScreenWithModal(
+                            onDismissModal = { showWatchModal = false },
+                            onTabSelected = { currentTab = it }
+                        )
+                    } else {
+                        com.pedroaba.tccmobile.features.home.screens.HomeScreen(
+                            onStartRun = onStartTelemetry,
+                            onViewProfile = { currentTab = "perfil" },
+                            onShowWatchModal = { showWatchModal = true },
+                            onTabSelected = { currentTab = it }
+                        )
+                    }
+                }
+                "rank" -> {
+                    com.pedroaba.tccmobile.features.ranking.screens.RankingScreen(
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+                "perfil" -> {
+                    com.pedroaba.tccmobile.features.profile.screens.ProfileScreen(
+                        onEditProfile = { currentTab = "edit_profile" },
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+                "social" -> {
+                    com.pedroaba.tccmobile.features.social.screens.FriendsListScreen(
+                        onAddFriends = { currentTab = "add_friends" },
+                        onHistory = { currentTab = "history" },
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+                "edit_profile" -> {
+                    com.pedroaba.tccmobile.features.profile.screens.EditProfileScreen(
+                        onBack = { currentTab = "perfil" },
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+                "add_friends" -> {
+                    com.pedroaba.tccmobile.features.social.screens.AddFriendsScreen(
+                        onBack = { currentTab = "social" },
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+                "history" -> {
+                    com.pedroaba.tccmobile.features.history.screens.HistoryScreen(
+                        onBack = { currentTab = "social" },
+                        onWatchConnection = { currentTab = "watch_connection" },
+                        onTabSelected = { currentTab = it }
+                    )
+                }
+                "watch_connection" -> {
+                    com.pedroaba.tccmobile.features.watch.screens.WatchConnectionStatesScreen(
+                        onBack = { currentTab = "history" },
+                        onWatchDisconnected = { currentTab = "watch_disconnected" }
+                    )
+                }
+                "watch_disconnected" -> {
+                    com.pedroaba.tccmobile.features.watch.screens.WatchDisconnectedScreen(
+                        onBack = { currentTab = "history" }
+                    )
+                }
+                "game" -> {
+                    GameScreen(
+                        telemetryStateFlow = telemetryStateFlow,
+                        currentTimeMsProvider = { SystemClock.elapsedRealtime() },
+                        onStartTelemetrySession = onStartTelemetry,
+                        onStopTelemetrySession = onStopTelemetry
+                    )
+                }
+                else -> {
+                    com.pedroaba.tccmobile.features.home.screens.HomeScreen(
+                        onStartRun = onStartTelemetry,
+                        onViewProfile = { currentTab = "perfil" },
+                        onShowWatchModal = { showWatchModal = true },
+                        onTabSelected = { currentTab = it }
+                    )
+                }
             }
-            
+
             FloatingTabBar(
                 currentTab = currentTab,
                 onTabSelected = { tab ->

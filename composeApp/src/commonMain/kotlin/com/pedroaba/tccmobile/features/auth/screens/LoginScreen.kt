@@ -68,7 +68,7 @@ fun LoginScreen(
 
     fun submit() {
         val trimmedEmail = email.trim()
-        emailError = if (isValidEmail(trimmedEmail)) null else "E-mail invalido"
+        emailError = if (isValidEmail(trimmedEmail)) null else "E-mail inválido"
         passwordError = if (password.isNotBlank()) null else "Informe a senha"
 
         if (emailError == null && passwordError == null) {
@@ -90,7 +90,7 @@ fun LoginScreen(
             Spacer(modifier = Modifier.weight(1f))
 
             AppHero("Entre com seu perfil.")
-            AppBody("Acesse sua conta para sincronizar sessoes, biometricos e progresso nas hordas.")
+            AppBody("Acesse sua conta para sincronizar sessões, biométricos e progresso nas hordas.")
 
             AppCard {
                 AppCardHeader {
@@ -156,7 +156,7 @@ fun LoginScreen(
                         )
 
                         AppButton(
-                            text = "Criar perfil atletico",
+                            text = "Criar perfil atlético",
                             modifier = Modifier.fillMaxWidth(),
                             variant = AppButtonVariant.Outline,
                             onClick = onCreateProfileRequested
@@ -180,7 +180,7 @@ fun LoginScreen(
                                 )
                             }
                         },
-                        text = "Sem relogio conectado, voce ainda registra tempo, distancia e calorias estimadas."
+                        text = "Sem relógio conectado, você ainda registra tempo, distância e calorias estimadas."
                     )
                 }
             }

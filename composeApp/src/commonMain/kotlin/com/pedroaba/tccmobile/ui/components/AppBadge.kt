@@ -72,3 +72,33 @@ fun AppBadge(
         )
     }
 }
+
+@Composable
+fun AppBadge(
+    text: String,
+    modifier: Modifier = Modifier,
+    containerColor: Color,
+    textColor: Color
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(AppTheme.radii.full),
+        color = containerColor,
+        contentColor = textColor
+    ) {
+        Row(
+            modifier = Modifier.padding(
+                horizontal = AppTheme.spacing.lg,
+                vertical = AppTheme.spacing.xs
+            ),
+            horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.xs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = text,
+                fontSize = AppTheme.fontSize.md,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}

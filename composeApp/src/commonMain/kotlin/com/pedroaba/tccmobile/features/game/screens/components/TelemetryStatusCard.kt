@@ -12,13 +12,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlin.math.roundToInt
 
 @Composable
 fun TelemetryStatusCard(
     telemetryState: TelemetryState,
-    lastEscapeMetricsLabel: String
+    lastEscapeMetricsLabel: String,
+    remoteSessionState: RemoteSessionState
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -42,6 +44,10 @@ fun TelemetryStatusCard(
             StatusRow("Escape Score", lastEscapeMetricsLabel)
             StatusRow("Normalized Speed", metrics?.normalizedSpeed?.let { "${(it * 100).roundToInt()}%" } ?: "--")
             StatusRow("Normalized Distance", metrics?.normalizedDistance?.let { "${(it * 100).roundToInt()}%" } ?: "--")
+            StatusRow(
+                "Horde Distance",
+                remoteSessionState.leaderboard?.hordeVirtualDistanceKm?.let { "${formatOneDecimal(it)} km" } ?: "--"
+            )
 
             val issuesLabel = telemetryState.availability.issues
                 .filterNot { it.name == "WATCH_UNAVAILABLE" }

@@ -22,18 +22,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
+import com.pedroaba.tccmobile.auth.model.UserSession
 import com.pedroaba.tccmobile.features.auth.screens.AuthLoadingScreen
 import com.pedroaba.tccmobile.auth.AuthManager
 import com.pedroaba.tccmobile.auth.AuthResult
 import com.pedroaba.tccmobile.auth.AuthState
+import com.pedroaba.tccmobile.backend.http.BackendHttpClient
+import com.pedroaba.tccmobile.backend.online.OnlineSessionRepository
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
+import com.pedroaba.tccmobile.backend.online.SessionApi
+import com.pedroaba.tccmobile.backend.online.StompWebSocketClient
 import com.pedroaba.tccmobile.features.auth.screens.LoginScreen
 import com.pedroaba.tccmobile.features.auth.screens.SignupScreen
 import com.pedroaba.tccmobile.features.game.screens.GameScreen
+import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.features.home.screens.HomeScreen
 import com.pedroaba.tccmobile.telemetry.service.AndroidTelemetryRuntime
 import com.pedroaba.tccmobile.telemetry.service.TelemetryForegroundService
 import com.pedroaba.tccmobile.telemetry.service.TelemetryRuntimeProvider
 import com.pedroaba.tccmobile.ui.components.navigation.FloatingTabBar
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 private const val TAG = "MainActivity"
@@ -42,12 +50,17 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var authManager: AuthManager
     private lateinit var telemetryRuntime: AndroidTelemetryRuntime
+    private lateinit var onlineSessionRepository: OnlineSessionRepository
+    private lateinit var backendHttpClient: BackendHttpClient
     
     private var hasLocationPermission by mutableStateOf(false)
     private var hasNotificationPermission by mutableStateOf(false)
     private var pendingTelemetryStart by mutableStateOf(false)
     private var isSubmitting by mutableStateOf(false)
+    private var authErrorMessage by mutableStateOf<String?>(null)
     private var currentTab by mutableStateOf("home")
+    private var showWatchModal by mutableStateOf(false)
+    private var latestGameSnapshot by mutableStateOf(GameSnapshot())
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -73,7 +86,13 @@ class MainActivity : ComponentActivity() {
 
         authManager = AuthManager(this)
         telemetryRuntime = TelemetryRuntimeProvider.get(this)
+        backendHttpClient = BackendHttpClient()
+        onlineSessionRepository = OnlineSessionRepository(
+            sessionApi = SessionApi(backendHttpClient),
+            stompWebSocketClient = StompWebSocketClient()
+        )
         syncTelemetryAvailability()
+        bindTelemetryToOnlineSession()
 
         Log.d(TAG, "App started, checking auth state...")
 
@@ -94,22 +113,27 @@ class MainActivity : ComponentActivity() {
                             Log.d(TAG, "Auth state: Unauthenticated")
                             AuthScreenContent(
                                 isSubmitting = isSubmitting,
+                                authErrorMessage = authErrorMessage,
                                 onSubmittingChanged = { isSubmitting = it },
                                 onLoginRequested = { email, password, _ ->
                                     lifecycleScope.launch {
+                                        authErrorMessage = null
                                         val result = authManager.login(email, password)
                                         isSubmitting = false
                                         if (result is AuthResult.Error) {
                                             Log.e(TAG, "Login error: ${result.message}")
+                                            authErrorMessage = result.message
                                         }
                                     }
                                 },
                                 onSignupRequested = { email, name, password, birthDate, height, weight ->
                                     lifecycleScope.launch {
+                                        authErrorMessage = null
                                         val result = authManager.register(email, name, password, birthDate, height, weight)
                                         isSubmitting = false
                                         if (result is AuthResult.Error) {
                                             Log.e(TAG, "Register error: ${result.message}")
+                                            authErrorMessage = result.message
                                         }
                                     }
                                 }
@@ -117,8 +141,11 @@ class MainActivity : ComponentActivity() {
                         }
                         is AuthState.Authenticated -> {
                             Log.d(TAG, "Auth state: Authenticated as ${state.session.email}")
+                            val remoteSessionState by onlineSessionRepository.state.collectAsStateWithLifecycle()
                             MainAppNavigation(
+                                session = state.session,
                                 telemetryStateFlow = telemetryRuntime.repository.telemetryState,
+                                remoteSessionState = remoteSessionState,
                                 onStartTelemetry = ::ensurePermissionsAndStartTelemetry,
                                 onStopTelemetry = ::stopTelemetrySession
                             )
@@ -132,6 +159,7 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun AuthScreenContent(
         isSubmitting: Boolean,
+        authErrorMessage: String?,
         onSubmittingChanged: (Boolean) -> Unit,
         onLoginRequested: (email: String, password: String, keepConnected: Boolean) -> Unit,
         onSignupRequested: (email: String, name: String, password: String, birthDate: String?, height: Double?, weight: Double?) -> Unit
@@ -141,6 +169,7 @@ class MainActivity : ComponentActivity() {
         if (isLoginMode) {
             LoginScreen(
                 isSubmitting = isSubmitting,
+                backendError = authErrorMessage,
                 onLoginRequested = { email, password, keepConnected ->
                     onSubmittingChanged(true)
                     onLoginRequested(email, password, keepConnected)
@@ -150,6 +179,7 @@ class MainActivity : ComponentActivity() {
         } else {
             SignupScreen(
                 isSubmitting = isSubmitting,
+                backendError = authErrorMessage,
                 onSignupRequested = { email, birthDate, name, _, height, weight, password ->
                     onSubmittingChanged(true)
                     onSignupRequested(email, name, password, birthDate, height?.toDouble(), weight?.toDouble())
@@ -161,13 +191,12 @@ class MainActivity : ComponentActivity() {
 
     @Composable
     private fun MainAppNavigation(
+        session: UserSession,
         telemetryStateFlow: kotlinx.coroutines.flow.StateFlow<com.pedroaba.tccmobile.game.telemetry.model.TelemetryState>,
+        remoteSessionState: RemoteSessionState,
         onStartTelemetry: () -> Unit,
         onStopTelemetry: () -> Unit
     ) {
-        var currentTab by remember { mutableStateOf("home") }
-        var showWatchModal by remember { mutableStateOf(false) }
-
         Box(modifier = Modifier.fillMaxSize()) {
             when (currentTab) {
                 "home" -> {
@@ -178,6 +207,7 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         com.pedroaba.tccmobile.features.home.screens.HomeScreen(
+                            userName = session.name.substringBefore(" ").ifBlank { session.name },
                             onStartRun = onStartTelemetry,
                             onViewProfile = { currentTab = "perfil" },
                             onShowWatchModal = { showWatchModal = true },
@@ -187,11 +217,15 @@ class MainActivity : ComponentActivity() {
                 }
                 "rank" -> {
                     com.pedroaba.tccmobile.features.ranking.screens.RankingScreen(
+                        remoteSessionState = remoteSessionState,
+                        currentUserName = session.name,
                         onTabSelected = { currentTab = it }
                     )
                 }
                 "perfil" -> {
                     com.pedroaba.tccmobile.features.profile.screens.ProfileScreen(
+                        userName = session.name,
+                        userEmail = session.email,
                         onEditProfile = { currentTab = "edit_profile" },
                         onTabSelected = { currentTab = it }
                     )
@@ -236,13 +270,16 @@ class MainActivity : ComponentActivity() {
                 "game" -> {
                     GameScreen(
                         telemetryStateFlow = telemetryStateFlow,
+                        remoteSessionState = remoteSessionState,
                         currentTimeMsProvider = { SystemClock.elapsedRealtime() },
+                        onSnapshotChanged = { latestGameSnapshot = it },
                         onStartTelemetrySession = onStartTelemetry,
                         onStopTelemetrySession = onStopTelemetry
                     )
                 }
                 else -> {
                     com.pedroaba.tccmobile.features.home.screens.HomeScreen(
+                        userName = session.name.substringBefore(" ").ifBlank { session.name },
                         onStartRun = onStartTelemetry,
                         onViewProfile = { currentTab = "perfil" },
                         onShowWatchModal = { showWatchModal = true },
@@ -278,6 +315,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun ensurePermissionsAndStartTelemetry() {
+        currentTab = "game"
         pendingTelemetryStart = true
         if (!hasLocationPermission) {
             requestLocationPermissions()
@@ -292,19 +330,71 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun startTelemetrySession() {
-        pendingTelemetryStart = false
-        telemetryRuntime.repository.startSession()
-        TelemetryForegroundService.start(this)
+        val authenticatedSession = (authManager.authState.value as? AuthState.Authenticated)?.session
+        if (authenticatedSession == null) {
+            pendingTelemetryStart = false
+            return
+        }
+
+        lifecycleScope.launch {
+            val result = onlineSessionRepository.startSession(authenticatedSession.token)
+            if (result.isSuccess) {
+                pendingTelemetryStart = false
+                telemetryRuntime.repository.startSession()
+                TelemetryForegroundService.start(this@MainActivity)
+            } else {
+                pendingTelemetryStart = false
+                Log.e(TAG, "Failed to start online session", result.exceptionOrNull())
+            }
+        }
     }
 
     private fun stopTelemetrySession() {
+        val authenticatedSession = (authManager.authState.value as? AuthState.Authenticated)?.session
+        if (authenticatedSession == null) {
+            stopLocalTelemetrySession()
+            return
+        }
+        if (onlineSessionRepository.state.value.sessionId == null) {
+            stopLocalTelemetrySession()
+            return
+        }
+
+        lifecycleScope.launch {
+            val result = onlineSessionRepository.endSession(authenticatedSession.token)
+            if (result.isSuccess) {
+                stopLocalTelemetrySession()
+            } else {
+                Log.e(TAG, "Failed to end online session", result.exceptionOrNull())
+            }
+        }
+    }
+
+    private fun stopLocalTelemetrySession() {
         pendingTelemetryStart = false
         telemetryRuntime.repository.stopSession()
         TelemetryForegroundService.stop(this)
     }
 
+    private fun bindTelemetryToOnlineSession() {
+        lifecycleScope.launch {
+            combine(authManager.authState, telemetryRuntime.repository.telemetryState) { authState, telemetryState ->
+                authState to telemetryState
+            }.collect { (authState, telemetryState) ->
+                val session = (authState as? AuthState.Authenticated)?.session ?: return@collect
+                onlineSessionRepository.sendTelemetry(
+                    userId = session.userId,
+                    telemetryState = telemetryState,
+                    snapshot = latestGameSnapshot
+                )
+            }
+        }
+    }
+
     override fun onDestroy() {
         super.onDestroy()
+        onlineSessionRepository.clear()
+        backendHttpClient.close()
         authManager.close()
     }
 }

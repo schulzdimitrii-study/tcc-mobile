@@ -74,7 +74,7 @@ class AuthManager(context: Context) {
     ): AuthResult {
         return withContext(Dispatchers.IO) {
             val request = com.pedroaba.tccmobile.auth.model.RegisterRequest(
-                email, name, password, birthDate, height, weight
+                email, name, password, parseBirthDate(birthDate), height, weight
             )
             val result = httpClient.register(request)
             result.fold(
@@ -91,6 +91,13 @@ class AuthManager(context: Context) {
                 }
             )
         }
+    }
+
+    private fun parseBirthDate(birthDate: String?): String? {
+        if (birthDate.isNullOrBlank()) return null
+        val digits = birthDate.filter { it.isDigit() }
+        if (digits.length != 8) return null
+        return "${digits.slice(4..7)}-${digits.slice(2..3)}-${digits.slice(0..1)}"
     }
 
     suspend fun logout() {

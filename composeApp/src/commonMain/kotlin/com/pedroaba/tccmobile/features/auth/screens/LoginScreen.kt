@@ -57,6 +57,7 @@ import androidx.compose.material3.Icon
 fun LoginScreen(
     modifier: Modifier = Modifier,
     isSubmitting: Boolean = false,
+    backendError: String? = null,
     onLoginRequested: (email: String, password: String, keepConnected: Boolean) -> Unit = { _, _, _ -> },
     onCreateProfileRequested: () -> Unit = {}
 ) {
@@ -102,6 +103,10 @@ fun LoginScreen(
                     modifier = Modifier.padding(vertical = AppTheme.spacing.xs)
                 ) {
                     AppForm {
+                        backendError?.let {
+                            AppCallout(text = it)
+                        }
+
                         AppFormField {
                             AppFormLabel("E-mail")
                             AppTextInput(

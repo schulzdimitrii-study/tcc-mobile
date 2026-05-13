@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.ui.components.AppButton
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
 import com.pedroaba.tccmobile.ui.components.AppSecondary
@@ -32,6 +33,8 @@ fun FriendsListScreen(
             AppTitle("Sua rede de fuga")
             AppCaption("Busque usuários, envie solicitações e acompanhe o status das conexões ativas.")
         }
+
+        AppCallout(text = "Convites, amizade e busca de usuarios ainda aguardam endpoints publicados no backend. Por enquanto esta area continua somente ilustrativa.")
 
         MetricStrip {
             MetricCard(value = "38", label = "na rede")

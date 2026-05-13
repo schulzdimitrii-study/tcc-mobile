@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.ui.components.AppBody
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
 import com.pedroaba.tccmobile.ui.components.AppTitle
@@ -26,6 +27,8 @@ fun HistoryScreen(
             AppTitle("Histórico de hordas")
             AppCaption("Revise sessões concluídas, compare distância, duração e calorias estimadas.")
         }
+
+        AppCallout(text = "O backend atual ainda nao publica endpoint de historico. Esta tela permanece como referencia visual ate a API de listagem ser exposta.")
 
         SectionPillTabs(
             options = listOf("Hoje", "Ultimo mes", "Sobreviveu"),

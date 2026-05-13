@@ -1,5 +1,6 @@
 package com.pedroaba.tccmobile.features.ranking.screens
 
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -11,6 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.pedroaba.tccmobile.ui.components.AppBody
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppMetric
 import com.pedroaba.tccmobile.ui.components.AppOverline
@@ -29,57 +31,77 @@ import com.pedroaba.tccmobile.theme.AppTheme
 
 @Composable
 fun RankingScreen(
+    remoteSessionState: RemoteSessionState = RemoteSessionState(),
+    currentUserName: String = "Você",
     onTabSelected: (String) -> Unit = {}
 ) {
     AppScreenScaffold {
         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             AppTitle("Ranking da infestação")
-            AppCaption("Veja sua posição no sistema e quem domina as hordas hoje.")
+            AppCaption("Veja sua posição na sessão online atual quando o backend estiver transmitindo o leaderboard.")
         }
 
-        ListPanel(title = "Seu status", actionLabel = "+6 esta semana") {
-            Column(verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.md)) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    AppTitle("#18 no ranking global")
-                    AppCaption("1.284 pts")
-                }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.sm)
-                ) {
-                    MetricCard(
-                        modifier = Modifier.weight(1f),
-                        value = "92%",
-                        label = "consistência"
-                    )
-                    MetricCard(
-                        modifier = Modifier.weight(1f),
-                        value = "14",
-                        label = "hordas do mês"
-                    )
+        val leaderboard = remoteSessionState.leaderboard
+        if (leaderboard == null) {
+            ListPanel(title = "Leaderboard indisponível", actionLabel = remoteSessionState.status.name) {
+                AppBody("Inicie uma sessão de corrida para receber sua posição em tempo real. O backend atual ainda não publica ranking global fora da sessão ativa.")
+            }
+        } else {
+            ListPanel(title = "Seu status", actionLabel = "sessão ativa") {
+                Column(verticalArrangement = Arrangement.spacedBy(AppTheme.spacing.md)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        AppTitle("#${leaderboard.userRank} na corrida")
+                        AppCaption("Sessão ${leaderboard.sessionId.take(8)}")
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.sm)
+                    ) {
+                        MetricCard(
+                            modifier = Modifier.weight(1f),
+                            value = "${leaderboard.entries.size}",
+                            label = "corredores no topo"
+                        )
+                        MetricCard(
+                            modifier = Modifier.weight(1f),
+                            value = leaderboard.hordeVirtualDistanceKm?.let { "${it} km" } ?: "--",
+                            label = "distância da horda"
+                        )
+                    }
                 }
             }
-        }
 
-        ListPanel(title = "Top 3 do ranking", actionLabel = "período mensal") {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                PodiumCard(position = "#2", name = "Maya", score = "1.8k pts")
-                PodiumCard(position = "#1", name = "Ravi", score = "2.1k pts", active = true)
-                PodiumCard(position = "#3", name = "Luna", score = "1.7k pts")
+            if (leaderboard.entries.isNotEmpty()) {
+                ListPanel(title = "Top 3 da sessão", actionLabel = "tempo real") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        leaderboard.entries.take(3).forEachIndexed { index, entry ->
+                            PodiumCard(
+                                position = "#${entry.rank}",
+                                name = if (entry.rank == leaderboard.userRank) currentUserName else "Atleta ${index + 1}",
+                                score = "${entry.distanceKm} km",
+                                active = index == 0
+                            )
+                        }
+                    }
+                }
             }
-        }
 
-        ListPanel(title = "Ranking geral", actionLabel = "score por período") {
-            LeaderboardRow(rank = "4", name = "Caio V.", score = "1.702 pts")
-            PanelDivider()
-            LeaderboardRow(rank = "5", name = "Lia Storm", score = "1.688 pts")
-            PanelDivider()
-            LeaderboardRow(rank = "6", name = "Nico Ferraz", score = "1.641 pts")
-            PanelDivider()
-            LeaderboardRow(rank = "18", name = "Pedro Barbosa", score = "1.284 pts", highlight = true)
+            ListPanel(title = "Leaderboard da sessão", actionLabel = remoteSessionState.status.name) {
+                leaderboard.entries.forEachIndexed { index, entry ->
+                    LeaderboardRow(
+                        rank = entry.rank.toString(),
+                        name = if (entry.rank == leaderboard.userRank) currentUserName else entry.userId,
+                        score = "${entry.distanceKm} km",
+                        highlight = entry.rank == leaderboard.userRank
+                    )
+                    if (index != leaderboard.entries.lastIndex) {
+                        PanelDivider()
+                    }
+                }
+            }
         }
     }
 }

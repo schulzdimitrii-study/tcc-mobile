@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import com.pedroaba.tccmobile.ui.components.AppButton
 import com.pedroaba.tccmobile.ui.components.AppButtonVariant
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
 import com.pedroaba.tccmobile.ui.components.AppSecondary
@@ -24,15 +25,19 @@ import com.pedroaba.tccmobile.ui.components.TopIdentityHeader
 
 @Composable
 fun ProfileScreen(
+    userName: String = "Pedro Barbosa",
+    userEmail: String = "pedro@example.com",
     onEditProfile: () -> Unit = {},
     onTabSelected: (String) -> Unit = {}
 ) {
     AppScreenScaffold {
         TopIdentityHeader(
-            title = "Pedro Barbosa",
-            subtitle = "Nível 12 · 37 hordas · Bio Runner",
-            badge = "SOBREVIVENTE  RANK #18"
+            title = userName,
+            subtitle = userEmail,
+            badge = "PERFIL SINCRONIZADO"
         )
+
+        AppCallout(text = "Os dados de identidade acima ja vem da sessao autenticada. Estatisticas de perfil completo ainda dependem de endpoints dedicados no backend.")
 
         MetricStrip {
             MetricCard(value = "184 km", label = "distância acumulada")
@@ -42,9 +47,9 @@ fun ProfileScreen(
 
         FeatureCard(
             title = "Smartwatch e sensores",
-            body = "Batimentos, pace e distância da sessão atual estão sendo enviados direto do dispositivo conectado.",
-            status = "Conectado",
-            statusTone = StatusPillTone.Success,
+            body = "A sessao atual pode enviar biometria e leaderboard em tempo real. Ajustes persistentes de dispositivo ainda nao possuem endpoint dedicado no backend atual.",
+            status = "Parcialmente integrado",
+            statusTone = StatusPillTone.Neutral,
             primaryAction = "Editar perfil",
             onPrimaryAction = onEditProfile,
             secondaryAction = "Compartilhar ID",

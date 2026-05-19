@@ -21,6 +21,8 @@ import com.pedroaba.tccmobile.ui.components.AppButtonVariant
 import com.pedroaba.tccmobile.ui.components.AppCard
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppCallout
+import com.pedroaba.tccmobile.ui.components.AppDateInput
+import com.pedroaba.tccmobile.ui.components.AppDateOutputFormat
 import com.pedroaba.tccmobile.ui.components.AppForm
 import com.pedroaba.tccmobile.ui.components.AppFormError
 import com.pedroaba.tccmobile.ui.components.AppFormField
@@ -45,7 +47,6 @@ fun EditProfileScreen(
     var name by remember { mutableStateOf(profile?.name ?: userName) }
     var email by remember { mutableStateOf(profile?.email ?: userEmail) }
     var birthdayDate by remember { mutableStateOf(profile?.birthdayDate.orEmpty()) }
-    var maxHeartRate by remember { mutableStateOf(profile?.maxHeartRate?.toString().orEmpty()) }
     var height by remember { mutableStateOf(profile?.height?.toString().orEmpty()) }
     var weight by remember { mutableStateOf(profile?.weight?.toString().orEmpty()) }
     var validationError by remember { mutableStateOf<String?>(null) }
@@ -55,7 +56,6 @@ fun EditProfileScreen(
         name = profile?.name ?: userName
         email = profile?.email ?: userEmail
         birthdayDate = profile?.birthdayDate.orEmpty()
-        maxHeartRate = profile?.maxHeartRate?.toString().orEmpty()
         height = profile?.height?.toString().orEmpty()
         weight = profile?.weight?.toString().orEmpty()
         validationError = null
@@ -88,16 +88,11 @@ fun EditProfileScreen(
                 }
                 AppFormField {
                     AppFormLabel("Data de nascimento")
-                    AppTextInput(value = birthdayDate, onValueChange = { birthdayDate = it }, placeholder = "AAAA-MM-DD")
-                    AppCaption("Formato esperado pelo backend: AAAA-MM-DD")
-                }
-                AppFormField {
-                    AppFormLabel("FC máxima")
-                    AppTextInput(
-                        value = maxHeartRate,
-                        onValueChange = { maxHeartRate = it.filter(Char::isDigit) },
-                        placeholder = "Ex: 186",
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    AppDateInput(
+                        value = birthdayDate,
+                        onValueChange = { birthdayDate = it },
+                        placeholder = "Selecionar data",
+                        outputFormat = AppDateOutputFormat.Iso
                     )
                 }
                 AppFormField {
@@ -126,8 +121,8 @@ fun EditProfileScreen(
 
         AppCard {
             AppTitle("Campos sincronizados")
-            AppCaption("Nome, e-mail, nascimento, FC máxima, altura e peso.")
-            AppSecondary("Esses são os campos disponíveis no contrato atual de /users/{id}.")
+            AppCaption("Nome, e-mail, nascimento, altura e peso.")
+            AppSecondary("A FC máxima é calculada automaticamente pela data de nascimento.")
         }
 
         Column(verticalArrangement = Arrangement.spacedBy(com.pedroaba.tccmobile.theme.AppTheme.spacing.sm)) {
@@ -138,7 +133,6 @@ fun EditProfileScreen(
                         name = name,
                         email = email,
                         birthdayDate = birthdayDate,
-                        maxHeartRate = maxHeartRate,
                         height = height,
                         weight = weight,
                         onInvalid = { validationError = it }
@@ -164,7 +158,6 @@ private fun buildUpdateRequest(
     name: String,
     email: String,
     birthdayDate: String,
-    maxHeartRate: String,
     height: String,
     weight: String,
     onInvalid: (String) -> Unit
@@ -184,12 +177,6 @@ private fun buildUpdateRequest(
         return null
     }
 
-    val parsedMaxHeartRate = maxHeartRate.trim().ifBlank { null }?.toIntOrNull()
-    if (maxHeartRate.isNotBlank() && parsedMaxHeartRate == null) {
-        onInvalid("Informe a FC máxima como número inteiro.")
-        return null
-    }
-
     val parsedHeight = height.trim().ifBlank { null }?.toDoubleOrNull()
     if (height.isNotBlank() && parsedHeight == null) {
         onInvalid("Informe a altura em metros usando ponto decimal.")
@@ -206,7 +193,7 @@ private fun buildUpdateRequest(
         name = name.trim(),
         email = email.trim(),
         birthdayDate = normalizedBirthDate,
-        maxHeartRate = parsedMaxHeartRate,
+        maxHeartRate = null,
         height = parsedHeight,
         weight = parsedWeight
     )

@@ -55,8 +55,9 @@ fun HomeScreen(
     onTabSelected: (String) -> Unit = {}
 ) {
     val selectedHorde = hordes.firstOrNull { it.id == selectedHordeId }
+        ?: remoteSessionState.selectedHorde
     val isLoadingHordes = hordeCatalogStatus == HordeCatalogStatus.LOADING
-    val canStartHorde = selectedHorde != null && !isLoadingHordes
+    val canStartHorde = selectedHorde?.id?.isNotBlank() == true && !isLoadingHordes
     val leaderboard = remoteSessionState.leaderboard
     val currentUserEntry = leaderboard?.entries?.firstOrNull { it.userId == currentUserId }
     val activeSessionId = remoteSessionState.sessionId

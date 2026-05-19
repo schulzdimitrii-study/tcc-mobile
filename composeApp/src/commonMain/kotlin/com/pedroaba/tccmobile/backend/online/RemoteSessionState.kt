@@ -37,10 +37,11 @@ data class RemoteSessionState(
         val currentSelection = selectedHorde?.let { selected ->
             newHordes.firstOrNull { it.id == selected.id }
         }
+        val fallbackSelection = newHordes.firstOrNull { it.id.isNotBlank() }
 
         return copy(
             hordes = newHordes,
-            selectedHorde = currentSelection ?: newHordes.firstOrNull(),
+            selectedHorde = currentSelection ?: fallbackSelection,
             hordeCatalogStatus = HordeCatalogStatus.LOADED,
             errorMessage = null
         )

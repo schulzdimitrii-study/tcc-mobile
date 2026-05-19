@@ -52,13 +52,12 @@ fun SignupScreen(
     modifier: Modifier = Modifier,
     isSubmitting: Boolean = false,
     backendError: String? = null,
-    onSignupRequested: (email: String, birthDate: String, name: String, maxHeartRate: Int?, height: Float?, weight: Float?, password: String) -> Unit = { _email: String, _birthDate: String, _name: String, _maxHeartRate: Int?, _height: Float?, _weight: Float?, _password: String -> },
+    onSignupRequested: (email: String, birthDate: String, name: String, height: Float?, weight: Float?, password: String) -> Unit = { _email: String, _birthDate: String, _name: String, _height: Float?, _weight: Float?, _password: String -> },
     onNavigateToLogin: () -> Unit = {}
 ) {
     var email by remember { mutableStateOf("") }
     var birthDate by remember { mutableStateOf("") }
     var name by remember { mutableStateOf("") }
-    var maxHeartRate by remember { mutableStateOf("") }
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
@@ -66,7 +65,6 @@ fun SignupScreen(
     var emailError by remember { mutableStateOf<String?>(null) }
     var birthDateError by remember { mutableStateOf<String?>(null) }
     var nameError by remember { mutableStateOf<String?>(null) }
-    var maxHeartRateError by remember { mutableStateOf<String?>(null) }
     var heightError by remember { mutableStateOf<String?>(null) }
     var weightError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
@@ -74,7 +72,6 @@ fun SignupScreen(
     fun submit() {
         val trimmedEmail = email.trim()
         val trimmedName = name.trim()
-        val digits = birthDate.filter { it.isDigit() }
 
         emailError = if (isValidEmail(trimmedEmail)) null else "E-mail inválido"
         nameError = if (trimmedName.isNotBlank()) null else "Nome inválido"
@@ -85,7 +82,6 @@ fun SignupScreen(
                 trimmedEmail,
                 birthDate,
                 trimmedName,
-                maxHeartRate.toIntOrNull(),
                 height.toFloatOrNull(),
                 weight.toFloatOrNull(),
                 password
@@ -150,40 +146,17 @@ fun SignupScreen(
                             birthDateError?.let { AppFormError(it) }
                         }
 
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.sm)
-                        ) {
-                            AppFormField(
-                                modifier = Modifier.weight(2f)
-                            ) {
-                                AppFormLabel("Nome")
-                                AppTextInput(
-                                    value = name,
-                                    onValueChange = {
-                                        name = it
-                                        nameError = null
-                                    },
-                                    placeholder = "Pedro Barbosa"
-                                )
-                                nameError?.let { AppFormError(it) }
-                            }
-
-                            AppFormField(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                AppFormLabel("FC máx.")
-                                AppTextInput(
-                                    value = maxHeartRate,
-                                    onValueChange = {
-                                        maxHeartRate = it
-                                        maxHeartRateError = null
-                                    },
-                                    placeholder = "180 bpm",
-                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                                )
-                                maxHeartRateError?.let { AppFormError(it) }
-                            }
+                        AppFormField {
+                            AppFormLabel("Nome")
+                            AppTextInput(
+                                value = name,
+                                onValueChange = {
+                                    name = it
+                                    nameError = null
+                                },
+                                placeholder = "Pedro Barbosa"
+                            )
+                            nameError?.let { AppFormError(it) }
                         }
 
                         Row(

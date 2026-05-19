@@ -50,6 +50,8 @@ import com.pedroaba.tccmobile.telemetry.service.TelemetryRuntimeProvider
 import com.pedroaba.tccmobile.ui.components.navigation.FloatingTabBar
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.Period
 
 private const val TAG = "MainActivity"
 
@@ -208,7 +210,7 @@ class MainActivity : ComponentActivity() {
             SignupScreen(
                 isSubmitting = isSubmitting,
                 backendError = authErrorMessage,
-                onSignupRequested = { email, birthDate, name, _, height, weight, password ->
+                onSignupRequested = { email, birthDate, name, height, weight, password ->
                     onSubmittingChanged(true)
                     onSignupRequested(email, name, password, birthDate, height?.toDouble(), weight?.toDouble())
                 },
@@ -485,7 +487,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             userProfileState = userProfileState.saving()
-            userApi.updateUser(session.token, session.userId, request).fold(
+            userApi.updateUser(session.token, session.userId, request.withCalculatedMaxHeartRate()).fold(
                 onSuccess = { profile ->
                     userProfileState = userProfileState.loaded(profile)
                     currentTab = "perfil"
@@ -497,6 +499,16 @@ class MainActivity : ComponentActivity() {
                 }
             )
         }
+    }
+
+    private fun com.pedroaba.tccmobile.backend.model.UpdateUserProfileRequest.withCalculatedMaxHeartRate():
+        com.pedroaba.tccmobile.backend.model.UpdateUserProfileRequest {
+        val birthDate = birthdayDate ?: return copy(maxHeartRate = null)
+        val age = runCatching {
+            Period.between(LocalDate.parse(birthDate), LocalDate.now()).years
+        }.getOrNull()
+
+        return copy(maxHeartRate = age?.takeIf { it >= 0 }?.let { 220 - it })
     }
 
     private fun startTelemetrySession() {

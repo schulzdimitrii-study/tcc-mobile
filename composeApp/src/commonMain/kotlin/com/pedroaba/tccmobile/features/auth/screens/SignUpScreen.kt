@@ -30,6 +30,7 @@ import com.pedroaba.tccmobile.ui.components.AppBadge
 import com.pedroaba.tccmobile.ui.components.AppBody
 import com.pedroaba.tccmobile.ui.components.AppButton
 import com.pedroaba.tccmobile.ui.components.AppButtonVariant
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import com.pedroaba.tccmobile.ui.components.AppCard
 import com.pedroaba.tccmobile.ui.components.AppCardContent
 import com.pedroaba.tccmobile.ui.components.AppCardFooter
@@ -50,6 +51,7 @@ import com.pedroaba.tccmobile.ui.components.AppTextInput
 fun SignupScreen(
     modifier: Modifier = Modifier,
     isSubmitting: Boolean = false,
+    backendError: String? = null,
     onSignupRequested: (email: String, birthDate: String, name: String, maxHeartRate: Int?, height: Float?, weight: Float?, password: String) -> Unit = { _email: String, _birthDate: String, _name: String, _maxHeartRate: Int?, _height: Float?, _weight: Float?, _password: String -> },
     onNavigateToLogin: () -> Unit = {}
 ) {
@@ -117,6 +119,10 @@ fun SignupScreen(
                     modifier = Modifier.padding(vertical = AppTheme.spacing.xs)
                 ) {
                     AppForm {
+                        backendError?.let {
+                            AppCallout(text = it)
+                        }
+
                         AppFormField {
                             AppFormLabel("E-mail")
                             AppTextInput(

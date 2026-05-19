@@ -11,11 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.EmojiEvents
-import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Icon
@@ -39,8 +37,7 @@ data class TabItem(
 val TAB_ITEMS = listOf(
     TabItem("home", "Home", Icons.Filled.Home),
     TabItem("rank", "Ranking", Icons.Filled.EmojiEvents),
-    TabItem("perfil", "Perfil", Icons.Filled.Person),
-    TabItem("social", "Social", Icons.Filled.Group)
+    TabItem("perfil", "Perfil", Icons.Filled.Person)
 )
 
 @Composable
@@ -52,18 +49,18 @@ fun FloatingTabBar(
     Box(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 6.dp),
+            .padding(horizontal = 12.dp)
+            .padding(bottom = 10.dp),
         contentAlignment = Alignment.BottomCenter
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(62.dp)
-                .clip(RoundedCornerShape(36.dp))
+                .height(72.dp)
+                .clip(RoundedCornerShape(28.dp))
                 .background(AppTheme.colors.card.copy(alpha = 0.94f))
-                .padding(horizontal = 4.dp, vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceEvenly
+                .padding(horizontal = 6.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             TAB_ITEMS.forEach { tab ->
                 val isSelected = currentTab == tab.name
@@ -76,14 +73,14 @@ fun FloatingTabBar(
                     if (isSelected) {
                         Column(
                             modifier = Modifier
-                                .width(82.dp)
+                                .fillMaxWidth()
                                 .fillMaxHeight()
-                                .clip(RoundedCornerShape(26.dp))
+                                .clip(RoundedCornerShape(22.dp))
                                 .background(AppTheme.colors.primary)
                                 .clickable { onTabSelected(tab.name) }
-                                .padding(vertical = 7.dp),
+                                .padding(vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
                         ) {
                             Icon(
                                 imageVector = tab.icon,
@@ -93,16 +90,18 @@ fun FloatingTabBar(
                             )
                             AppLabelStrong(
                                 text = tab.label,
-                                modifier = Modifier.padding(top = 5.dp)
+                                modifier = Modifier
                             )
                         }
                     } else {
                         Column(
                             modifier = Modifier
+                                .fillMaxWidth()
+                                .fillMaxHeight()
                                 .clickable { onTabSelected(tab.name) }
                                 .padding(vertical = 8.dp),
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.Center
+                            verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
                         ) {
                             Icon(
                                 imageVector = tab.icon,
@@ -112,7 +111,7 @@ fun FloatingTabBar(
                             )
                             AppOverline(
                                 text = tab.label,
-                                modifier = Modifier.padding(top = 5.dp)
+                                modifier = Modifier
                             )
                         }
                     }

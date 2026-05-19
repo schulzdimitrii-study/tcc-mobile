@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
@@ -76,7 +77,7 @@ fun TopIdentityHeader(
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AppTitle(title)
                 AppSecondary(subtitle)
-                badge?.let { AppBadge(text = it, variant = AppBadgeVariant.Secondary) }
+                badge?.let { AppBadge(text = it, variant = AppBadgeVariant.Secondary, compact = true) }
             }
         }
         trailing?.invoke(this)
@@ -92,7 +93,14 @@ fun SurvivorAvatar(
         modifier = modifier
             .size(42.dp)
             .clip(CircleShape)
-            .background(Color(0xFFFFD1D5)),
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        AppTheme.colors.primary,
+                        AppTheme.colors.deep
+                    )
+                )
+            ),
         contentAlignment = Alignment.Center
     ) {
         AppLabelStrong(initials.ifBlank { "SV" })
@@ -211,8 +219,10 @@ fun FeatureCard(
     statusTone: StatusPillTone = StatusPillTone.Primary,
     primaryAction: String? = null,
     onPrimaryAction: (() -> Unit)? = null,
+    primaryActionEnabled: Boolean = true,
     secondaryAction: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
+    secondaryActionEnabled: Boolean = true,
     footer: (@Composable ColumnScope.() -> Unit)? = null
 ) {
     AppCard(modifier = modifier) {
@@ -229,7 +239,8 @@ fun FeatureCard(
                     AppButton(
                         text = it,
                         onClick = { onPrimaryAction?.invoke() },
-                        modifier = Modifier.weight(if (secondaryAction != null) 1.35f else 1f)
+                        modifier = Modifier.weight(if (secondaryAction != null) 1.35f else 1f),
+                        enabled = primaryActionEnabled
                     )
                 }
                 secondaryAction?.let {
@@ -237,7 +248,8 @@ fun FeatureCard(
                         text = it,
                         onClick = { onSecondaryAction?.invoke() },
                         modifier = Modifier.weight(1f),
-                        variant = AppButtonVariant.Outline
+                        variant = AppButtonVariant.Outline,
+                        enabled = secondaryActionEnabled
                     )
                 }
             }

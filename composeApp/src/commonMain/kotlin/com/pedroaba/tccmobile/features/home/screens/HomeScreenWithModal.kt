@@ -3,7 +3,10 @@ package com.pedroaba.tccmobile.features.home.screens
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.unit.dp
+import androidx.compose.ui.Modifier
+import com.pedroaba.tccmobile.backend.online.HordeCatalogStatus
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
+import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
 import com.pedroaba.tccmobile.ui.components.AppSecondary
 import com.pedroaba.tccmobile.ui.components.FeatureCard
@@ -15,45 +18,95 @@ import com.pedroaba.tccmobile.ui.components.StatusPillTone
 import com.pedroaba.tccmobile.ui.components.TopIdentityHeader
 import com.pedroaba.tccmobile.ui.components.ListPanel
 import com.pedroaba.tccmobile.ui.components.ListRow
+import kotlin.math.round
 
 @Composable
 fun HomeScreenWithModal(
+    userName: String = "Você",
+    currentUserId: String = "",
+    remoteSessionState: RemoteSessionState = RemoteSessionState(),
     onDismissModal: () -> Unit = {},
     onTabSelected: (String) -> Unit = {}
 ) {
+    val leaderboard = remoteSessionState.leaderboard
+    val currentUserEntry = leaderboard?.entries?.firstOrNull { it.userId == currentUserId }
+    val isSessionActive = remoteSessionState.status == RemoteSessionStatus.ACTIVE ||
+        remoteSessionState.status == RemoteSessionStatus.CONNECTING ||
+        remoteSessionState.status == RemoteSessionStatus.STARTING
+
     AppScreenScaffold {
         TopIdentityHeader(
-            title = "Boa noite, Pedro",
-            subtitle = "Nível 12 · 37 hordas sobrevividas"
+            title = "Boa noite, $userName",
+            subtitle = remoteSessionState.sessionId?.let { "Sessão ${it.take(8)} · ${remoteSessionState.status.name.lowercase()}" }
+                ?: "Conta conectada · aguardando sessão"
         )
 
         MetricStrip {
-            MetricCard(value = "12", label = "sessões concluídas")
-            MetricCard(value = "37", label = "hordas vencidas")
+            MetricCard(
+                modifier = Modifier.weight(1f),
+                value = remoteSessionState.hordes.size.toString(),
+                label = "hordas carregadas"
+            )
+            MetricCard(
+                modifier = Modifier.weight(1f),
+                value = leaderboard?.userRank?.let { "#$it" } ?: "--",
+                label = "rank na sessão"
+            )
         }
 
         FeatureCard(
-            status = "SMARTWATCH OFFLINE",
-            statusTone = StatusPillTone.Alert,
-            title = "Como iniciar a sessão?",
-            body = "Sem smartwatch, a sessão registra tempo, distância e calorias estimadas. Conecte o relógio para liberar BPM, zona cardíaca e ritmo ao vivo.",
-            primaryAction = "Conectar relógio",
+            status = if (isSessionActive) "SESSÃO ATIVA" else "WEARABLE NÃO INTEGRADO",
+            statusTone = if (isSessionActive) StatusPillTone.Success else StatusPillTone.Neutral,
+            title = "Telemetria disponível",
+            body = "O app envia localização, velocidade, cadência estimada e distância ao backend. BPM depende da ponte de wearable nativa.",
+            primaryAction = "Voltar",
             onPrimaryAction = onDismissModal,
-            secondaryAction = "Continuar sem BPM",
+            secondaryAction = if (isSessionActive) "Ver sessão" else "Entendi",
             onSecondaryAction = onDismissModal,
             footer = {
                 PanelDivider()
                 Column(verticalArrangement = Arrangement.spacedBy(com.pedroaba.tccmobile.theme.AppTheme.spacing.xs)) {
-                    StatusPill(text = "Ritmo ao vivo", tone = StatusPillTone.Neutral)
-                    AppSecondary("Você mantém um fluxo de 28 min e escapa da zona de risco em 3 sprints.")
+                    StatusPill(
+                        text = when (remoteSessionState.hordeCatalogStatus) {
+                            HordeCatalogStatus.LOADED -> "Hordas sincronizadas"
+                            HordeCatalogStatus.LOADING -> "Sincronizando hordas"
+                            HordeCatalogStatus.ERROR -> "Falha no catálogo"
+                            HordeCatalogStatus.IDLE -> "Catálogo pendente"
+                        },
+                        tone = if (remoteSessionState.hordeCatalogStatus == HordeCatalogStatus.ERROR) {
+                            StatusPillTone.Alert
+                        } else {
+                            StatusPillTone.Neutral
+                        }
+                    )
+                    AppSecondary(
+                        currentUserEntry?.distanceKm?.let { "Sua distância enviada: ${formatKm(it)}." }
+                            ?: "Ainda não há amostra de leaderboard para esta sessão."
+                    )
                 }
             }
         )
 
-        ListPanel(title = "Ranking dos amigos", actionLabel = "Top 3") {
-            ListRow(title = "Pedro Augusto", subtitle = "1º lugar", trailingTop = "100 km")
-            PanelDivider()
-            ListRow(title = "Rafael Augusto", subtitle = "2º lugar", trailingTop = "87 km")
+        ListPanel(title = "Leaderboard da sessão", actionLabel = if (leaderboard == null) "sem dados" else "tempo real") {
+            if (leaderboard == null || leaderboard.entries.isEmpty()) {
+                AppSecondary("O backend ainda não transmitiu posições para a sessão atual.")
+            } else {
+                leaderboard.entries.take(3).forEachIndexed { index, entry ->
+                    ListRow(
+                        title = if (entry.userId == currentUserId) userName else entry.userId.take(8),
+                        subtitle = "#${entry.rank}",
+                        trailingTop = formatKm(entry.distanceKm)
+                    )
+                    if (index != leaderboard.entries.take(3).lastIndex) {
+                        PanelDivider()
+                    }
+                }
+            }
         }
     }
+}
+
+private fun formatKm(value: Double): String {
+    val rounded = round(value * 100.0) / 100.0
+    return "$rounded km"
 }

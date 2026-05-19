@@ -6,13 +6,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import com.pedroaba.tccmobile.ui.components.AppButton
-import com.pedroaba.tccmobile.ui.components.AppButtonVariant
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
+import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
 import com.pedroaba.tccmobile.ui.components.AppSecondary
 import com.pedroaba.tccmobile.ui.components.FeatureCard
-import com.pedroaba.tccmobile.ui.components.IconBadge
 import com.pedroaba.tccmobile.ui.components.ListPanel
 import com.pedroaba.tccmobile.ui.components.ListRow
 import com.pedroaba.tccmobile.ui.components.MetricCard
@@ -24,31 +24,49 @@ import com.pedroaba.tccmobile.ui.components.TopIdentityHeader
 
 @Composable
 fun ProfileScreen(
+    userName: String = "Você",
+    userEmail: String = "",
+    currentUserId: String = "",
+    remoteSessionState: RemoteSessionState = RemoteSessionState(),
     onEditProfile: () -> Unit = {},
     onTabSelected: (String) -> Unit = {}
 ) {
+    val leaderboard = remoteSessionState.leaderboard
+    val currentUserEntry = leaderboard?.entries?.firstOrNull { it.userId == currentUserId }
+    val isSessionActive = remoteSessionState.status == RemoteSessionStatus.ACTIVE ||
+        remoteSessionState.status == RemoteSessionStatus.CONNECTING ||
+        remoteSessionState.status == RemoteSessionStatus.STARTING
+
     AppScreenScaffold {
         TopIdentityHeader(
-            title = "Pedro Barbosa",
-            subtitle = "Nível 12 · 37 hordas · Bio Runner",
-            badge = "SOBREVIVENTE  RANK #18"
+            title = userName,
+            subtitle = userEmail.ifBlank { "Email não informado" }
         )
 
+        AppCallout(text = "Identidade sincronizada pela autenticação. Estatísticas históricas permanecem vazias até existirem endpoints dedicados no backend.")
+
         MetricStrip {
-            MetricCard(value = "184 km", label = "distância acumulada")
-            MetricCard(value = "42 min", label = "melhor horda")
-            MetricCard(value = "92%", label = "aproveitamento")
+            MetricCard(
+                modifier = Modifier.weight(1f),
+                value = currentUserEntry?.distanceKm?.let(::formatKm) ?: "--",
+                label = "distância na sessão"
+            )
+            MetricCard(
+                modifier = Modifier.weight(1f),
+                value = leaderboard?.userRank?.let { "#$it" } ?: "--",
+                label = "rank atual"
+            )
         }
 
         FeatureCard(
-            title = "Smartwatch e sensores",
-            body = "Batimentos, pace e distância da sessão atual estão sendo enviados direto do dispositivo conectado.",
-            status = "Conectado",
-            statusTone = StatusPillTone.Success,
-            primaryAction = "Editar perfil",
-            onPrimaryAction = onEditProfile,
-            secondaryAction = "Compartilhar ID",
-            onSecondaryAction = {},
+            title = "Telemetria do celular",
+            body = "Gerencie GPS, sensores de movimento e serviço em foreground. Smartwatch fica fora deste fluxo por enquanto.",
+            status = if (isSessionActive) "Sessão ativa" else "Sem sessão ativa",
+            statusTone = if (isSessionActive) StatusPillTone.Success else StatusPillTone.Neutral,
+            primaryAction = "Permissões",
+            onPrimaryAction = { onTabSelected("telemetry_permissions") },
+            secondaryAction = "Editar perfil",
+            onSecondaryAction = onEditProfile,
             footer = {
                 PanelDivider()
                 Row(
@@ -56,37 +74,34 @@ fun ProfileScreen(
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Column {
-                        AppCaption("Garmin Venue")
-                        AppSecondary("último dispositivo pareado")
+                        AppCaption("GPS e movimento")
+                        AppSecondary("permissões do celular")
                     }
                     Column {
-                        AppCaption("BPM ao vivo")
-                        AppSecondary("biometria e dados ao vivo")
+                        AppCaption("Backend")
+                        AppSecondary(remoteSessionState.status.name)
                     }
                 }
             }
         )
 
-        ListPanel(title = "Rede social", actionLabel = "amizades e convites") {
-            Row(horizontalArrangement = Arrangement.spacedBy(com.pedroaba.tccmobile.theme.AppTheme.spacing.sm)) {
-            AppButton(
-                text = "Ver aliados",
-                onClick = { onTabSelected("social") },
-                modifier = Modifier.fillMaxWidth(),
-                variant = AppButtonVariant.Outline
-            )
-            AppButton(
-                text = "Convidar amigo",
-                onClick = { onTabSelected("social") },
-                modifier = Modifier.fillMaxWidth()
-            )
-        }
-        }
-
-        ListPanel(title = "Últimas hordas", actionLabel = "histórico") {
-            ListRow(title = "Distrito Industrial", subtitle = "6.4 km · 42 min · Sobreviveu", trailingTop = "Ontem")
-            PanelDivider()
-            ListRow(title = "Marginal Norte", subtitle = "4.1 km · 28 min · Sprint final", trailingTop = "2 dias")
+        ListPanel(title = "Sessão atual", actionLabel = if (leaderboard == null) "sem dados" else "tempo real") {
+            if (leaderboard == null) {
+                AppSecondary("Inicie uma horda para receber leaderboard e distância em tempo real.")
+            } else {
+                leaderboard.entries.take(3).forEachIndexed { index, entry ->
+                    ListRow(
+                        title = if (entry.userId == currentUserId) userName else entry.userId.take(8),
+                        subtitle = "#${entry.rank}",
+                        trailingTop = formatKm(entry.distanceKm)
+                    )
+                    if (index != leaderboard.entries.take(3).lastIndex) {
+                        PanelDivider()
+                    }
+                }
+            }
         }
     }
 }
+
+private fun formatKm(value: Double): String = "${kotlin.math.round(value * 100.0) / 100.0} km"

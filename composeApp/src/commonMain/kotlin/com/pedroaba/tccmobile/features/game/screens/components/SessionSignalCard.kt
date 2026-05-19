@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlin.math.roundToInt
@@ -16,7 +17,8 @@ import kotlin.math.roundToInt
 @Composable
 fun SessionSignalCard(
     telemetryState: TelemetryState,
-    snapshot: GameSnapshot
+    snapshot: GameSnapshot,
+    remoteSessionState: RemoteSessionState
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -24,11 +26,16 @@ fun SessionSignalCard(
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             StatusRow("Session", telemetryState.session.status.name)
+            StatusRow("Online Sync", remoteSessionState.status.name)
+            StatusRow("Remote Session", remoteSessionState.sessionId ?: "--")
             StatusRow("Telemetry Speed", telemetryState.latestSample?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
             StatusRow("Telemetry Distance", telemetryState.latestSample?.totalDistanceMeters?.roundToInt()?.toString() ?: "--")
             StatusRow("Runner Vel.", formatOneDecimal(snapshot.runnerVelocity))
             StatusRow("Horde Vel.", formatOneDecimal(snapshot.hordeVelocity))
             StatusRow("Elapsed", "${snapshot.elapsedSeconds.roundToInt()}s")
+            remoteSessionState.leaderboard?.let {
+                StatusRow("Your Rank", "#${it.userRank}")
+            }
         }
     }
 }

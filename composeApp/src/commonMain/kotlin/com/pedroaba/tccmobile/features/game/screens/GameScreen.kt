@@ -25,9 +25,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.game.GameController
 import com.pedroaba.tccmobile.game.KorgeGameView
 import com.pedroaba.tccmobile.game.debug.GameDebugLogger
+import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.models.SessionConfig
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetrySessionStatus
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
@@ -36,13 +38,17 @@ import com.pedroaba.tccmobile.features.game.screens.components.StatusDisplay
 import com.pedroaba.tccmobile.features.game.screens.components.TelemetryStatusCard
 import com.pedroaba.tccmobile.theme.AppTheme
 import com.pedroaba.tccmobile.theme.TccMobileTheme
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 
 @Composable
 fun GameScreen(
     telemetryStateFlow: StateFlow<TelemetryState>? = null,
+    remoteSessionState: RemoteSessionState = RemoteSessionState(),
+    gameSessionConfig: SessionConfig = defaultGameSessionConfig,
     currentTimeMsProvider: () -> Long = { 0L },
+    onSnapshotChanged: (GameSnapshot) -> Unit = {},
     onStartTelemetrySession: (() -> Unit)? = null,
     onStopTelemetrySession: (() -> Unit)? = null
 ) {
@@ -53,6 +59,10 @@ fun GameScreen(
         val lastEscapeMetrics by gameController.lastEscapeMetrics.collectAsState()
         val isActive by gameController.isActive.collectAsState()
         val telemetryState = telemetryStateFlow?.collectAsState()?.value ?: TelemetryState()
+
+        LaunchedEffect(snapshot) {
+            onSnapshotChanged(snapshot)
+        }
 
         LaunchedEffect(telemetryState.latestEscapeMetrics) {
             telemetryState.latestEscapeMetrics?.let(gameController::applyEscapeMetrics)
@@ -185,16 +195,23 @@ fun GameScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
+                    remoteSessionState.errorMessage?.let {
+                        AppCallout(text = it)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+
                     SessionSignalCard(
                         telemetryState = telemetryState,
-                        snapshot = snapshot
+                        snapshot = snapshot,
+                        remoteSessionState = remoteSessionState
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     TelemetryStatusCard(
                         telemetryState = telemetryState,
-                        lastEscapeMetricsLabel = lastEscapeMetrics?.movementScore?.let { "${(it * 100).roundToInt()}%" } ?: "--"
+                        lastEscapeMetricsLabel = lastEscapeMetrics?.movementScore?.let { "${(it * 100).roundToInt()}%" } ?: "--",
+                        remoteSessionState = remoteSessionState
                     )
                 }
             }
@@ -202,7 +219,7 @@ fun GameScreen(
     }
 }
 
-private val gameSessionConfig = SessionConfig(
+private val defaultGameSessionConfig = SessionConfig(
     goalDistance = 1000.0,
     sessionDurationSeconds = 90.0,
     initialDistance = 500.0,

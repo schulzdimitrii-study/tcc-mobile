@@ -12,6 +12,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.TextUnit
 import com.pedroaba.tccmobile.theme.AppTheme
 
 enum class AppBadgeVariant {
@@ -25,6 +26,7 @@ enum class AppBadgeVariant {
 fun AppBadge(
     modifier: Modifier = Modifier,
     variant: AppBadgeVariant = AppBadgeVariant.Primary,
+    compact: Boolean = false,
     content: @Composable RowScope.() -> Unit
 ) {
     val colors = AppTheme.colors
@@ -47,8 +49,8 @@ fun AppBadge(
     ) {
         Row(
             modifier = Modifier.padding(
-                horizontal = AppTheme.spacing.lg,
-                vertical = AppTheme.spacing.xs
+                horizontal = if (compact) AppTheme.spacing.md else AppTheme.spacing.lg,
+                vertical = if (compact) AppTheme.spacing.xs else AppTheme.spacing.xs
             ),
             horizontalArrangement = Arrangement.spacedBy(AppTheme.spacing.xs),
             verticalAlignment = Alignment.CenterVertically,
@@ -61,12 +63,14 @@ fun AppBadge(
 fun AppBadge(
     text: String,
     modifier: Modifier = Modifier,
-    variant: AppBadgeVariant = AppBadgeVariant.Primary
+    variant: AppBadgeVariant = AppBadgeVariant.Primary,
+    compact: Boolean = false,
+    fontSize: TextUnit = if (compact) AppTheme.fontSize.sm else AppTheme.fontSize.md
 ) {
-    AppBadge(modifier = modifier, variant = variant) {
+    AppBadge(modifier = modifier, variant = variant, compact = compact) {
         Text(
             text = text,
-            fontSize = AppTheme.fontSize.md,
+            fontSize = fontSize,
             fontWeight = FontWeight.Bold,
             color = Color.Unspecified
         )

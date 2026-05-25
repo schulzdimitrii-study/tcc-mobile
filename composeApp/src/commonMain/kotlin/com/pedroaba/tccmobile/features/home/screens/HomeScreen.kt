@@ -58,6 +58,7 @@ fun HomeScreen(
         ?: remoteSessionState.selectedHorde
     val isLoadingHordes = hordeCatalogStatus == HordeCatalogStatus.LOADING
     val canStartHorde = selectedHorde?.id?.isNotBlank() == true && !isLoadingHordes
+    val canStartFreeSession = !isLoadingHordes
     val leaderboard = remoteSessionState.leaderboard
     val currentUserEntry = leaderboard?.entries?.firstOrNull { it.userId == currentUserId }
     val activeSessionId = remoteSessionState.sessionId
@@ -68,6 +69,7 @@ fun HomeScreen(
     AppScreenScaffold {
         TopIdentityHeader(
             title = "Boa noite, $userName",
+            avatarName = userName,
             subtitle = if (activeSessionId != null) {
                 "Sessão ${activeSessionId.take(8)} · ${remoteSessionState.status.name.lowercase()}"
             } else {
@@ -76,14 +78,18 @@ fun HomeScreen(
         )
 
         FeatureCard(
-            eyebrow = if (canStartHorde) "HORDA PRONTA" else "HORDA INDISPONIVEL",
-            title = selectedHorde?.name ?: "Escolha uma horda do backend.",
+            eyebrow = if (canStartHorde) "HORDA PRONTA" else "TREINO LIVRE",
+            title = selectedHorde?.name ?: "Iniciar sem horda.",
             body = selectedHorde?.let {
                 "${it.displayDifficulty()} · ${it.displayPace()} · ${it.displayDuration()}"
-            } ?: "Busque as hordas no backend para iniciar uma sessão vinculada.",
-            primaryAction = if (isLoadingHordes) "Carregando" else "Comecar horda",
+            } ?: "O backend não expõe criação de hordas no contrato atual. Você ainda pode iniciar uma sessão livre.",
+            primaryAction = when {
+                isLoadingHordes -> "Carregando"
+                canStartHorde -> "Comecar horda"
+                else -> "Iniciar treino livre"
+            },
             onPrimaryAction = onStartRun,
-            primaryActionEnabled = canStartHorde,
+            primaryActionEnabled = canStartHorde || canStartFreeSession,
             secondaryAction = "Ver perfil",
             onSecondaryAction = onViewProfile,
             footer = {

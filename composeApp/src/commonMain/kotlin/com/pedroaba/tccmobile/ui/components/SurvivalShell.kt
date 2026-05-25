@@ -60,6 +60,7 @@ fun TopIdentityHeader(
     title: String,
     subtitle: String,
     modifier: Modifier = Modifier,
+    avatarName: String? = null,
     badge: String? = null,
     trailing: (@Composable RowScope.() -> Unit)? = null
 ) {
@@ -73,7 +74,7 @@ fun TopIdentityHeader(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.weight(1f)
         ) {
-            SurvivorAvatar(initials = title.split(" ").mapNotNull { it.firstOrNull()?.uppercase() }.take(2).joinToString(""))
+            SurvivorAvatar(initials = avatarInitials(avatarName ?: title))
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 AppTitle(title)
                 AppSecondary(subtitle)
@@ -83,6 +84,14 @@ fun TopIdentityHeader(
         trailing?.invoke(this)
     }
 }
+
+private fun avatarInitials(name: String): String =
+    name
+        .trim()
+        .split(Regex("\\s+"))
+        .mapNotNull { part -> part.firstOrNull { it.isLetterOrDigit() }?.uppercase() }
+        .take(2)
+        .joinToString("")
 
 @Composable
 fun SurvivorAvatar(

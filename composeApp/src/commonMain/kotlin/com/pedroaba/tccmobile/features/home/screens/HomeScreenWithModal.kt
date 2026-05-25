@@ -37,6 +37,7 @@ fun HomeScreenWithModal(
     AppScreenScaffold {
         TopIdentityHeader(
             title = "Boa noite, $userName",
+            avatarName = userName,
             subtitle = remoteSessionState.sessionId?.let { "Sessão ${it.take(8)} · ${remoteSessionState.status.name.lowercase()}" }
                 ?: "Conta conectada · aguardando sessão"
         )

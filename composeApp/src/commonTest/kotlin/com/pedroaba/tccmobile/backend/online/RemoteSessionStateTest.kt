@@ -5,6 +5,7 @@ import com.pedroaba.tccmobile.backend.model.LeaderboardEntryDto
 import com.pedroaba.tccmobile.backend.model.LeaderboardResponse
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNull
 
 class RemoteSessionStateTest {
 
@@ -84,5 +85,74 @@ class RemoteSessionStateTest {
         val updated = current.onHordesLoaded(hordes)
 
         assertEquals(hordes[1], updated.selectedHorde)
+    }
+
+    @Test
+    fun `hordes loaded with empty list clears unavailable selection`() {
+        val current = RemoteSessionState(
+            selectedHorde = HordeDto(id = "missing", name = "Indisponivel")
+        )
+
+        val updated = current.onHordesLoaded(emptyList())
+
+        assertEquals(HordeCatalogStatus.LOADED, updated.hordeCatalogStatus)
+        assertEquals(emptyList(), updated.hordes)
+        assertNull(updated.selectedHorde)
+    }
+
+    @Test
+    fun `horde selection ignores unknown id and preserves previous selection`() {
+        val selected = HordeDto(id = "horde-1", name = "Centro")
+        val current = RemoteSessionState(
+            hordes = listOf(selected),
+            selectedHorde = selected
+        )
+
+        val updated = current.onHordeSelected("missing")
+
+        assertEquals(selected, updated.selectedHorde)
+    }
+
+    @Test
+    fun `session ended clears volatile session data`() {
+        val current = RemoteSessionState(
+            sessionId = "session-1",
+            status = RemoteSessionStatus.ACTIVE,
+            leaderboard = LeaderboardResponse(
+                sessionId = "session-1",
+                userRank = 1,
+                hordeVirtualDistanceKm = 1.0,
+                entries = listOf(LeaderboardEntryDto("u1", 1, 2.0))
+            ),
+            errorMessage = "old"
+        )
+
+        val updated = current.onSessionEnded()
+
+        assertEquals(RemoteSessionStatus.IDLE, updated.status)
+        assertNull(updated.sessionId)
+        assertNull(updated.leaderboard)
+        assertNull(updated.errorMessage)
+    }
+
+    @Test
+    fun `realtime failure marks error without losing leaderboard`() {
+        val leaderboard = LeaderboardResponse(
+            sessionId = "session-1",
+            userRank = 1,
+            hordeVirtualDistanceKm = null,
+            entries = listOf(LeaderboardEntryDto("u1", 1, 2.0))
+        )
+        val current = RemoteSessionState(
+            sessionId = "session-1",
+            status = RemoteSessionStatus.ACTIVE,
+            leaderboard = leaderboard
+        )
+
+        val updated = current.onRealtimeFailure("socket caiu")
+
+        assertEquals(RemoteSessionStatus.ERROR, updated.status)
+        assertEquals("socket caiu", updated.errorMessage)
+        assertEquals(leaderboard, updated.leaderboard)
     }
 }

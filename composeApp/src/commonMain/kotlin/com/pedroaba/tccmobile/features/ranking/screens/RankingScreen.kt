@@ -32,6 +32,7 @@ import com.pedroaba.tccmobile.theme.AppTheme
 @Composable
 fun RankingScreen(
     remoteSessionState: RemoteSessionState = RemoteSessionState(),
+    currentUserId: String = "",
     currentUserName: String = "Você",
     onTabSelected: (String) -> Unit = {}
 ) {
@@ -64,7 +65,7 @@ fun RankingScreen(
                         )
                         MetricCard(
                             modifier = Modifier.weight(1f),
-                            value = leaderboard.hordeVirtualDistanceKm?.let { "${it} km" } ?: "--",
+                            value = leaderboard.hordeVirtualDistanceKm?.let(::formatKm) ?: "--",
                             label = "distância da horda"
                         )
                     }
@@ -80,8 +81,8 @@ fun RankingScreen(
                         leaderboard.entries.take(3).forEachIndexed { index, entry ->
                             PodiumCard(
                                 position = "#${entry.rank}",
-                                name = if (entry.rank == leaderboard.userRank) currentUserName else "Atleta ${index + 1}",
-                                score = "${entry.distanceKm} km",
+                                name = if (entry.userId == currentUserId) currentUserName else "Atleta ${index + 1}",
+                                score = formatKm(entry.distanceKm),
                                 active = index == 0
                             )
                         }
@@ -91,15 +92,19 @@ fun RankingScreen(
 
             ListPanel(title = "Leaderboard da sessão", actionLabel = remoteSessionState.status.name) {
                 leaderboard.entries.forEachIndexed { index, entry ->
+                    val isCurrentUser = entry.userId == currentUserId
                     LeaderboardRow(
                         rank = entry.rank.toString(),
-                        name = if (entry.rank == leaderboard.userRank) currentUserName else entry.userId,
-                        score = "${entry.distanceKm} km",
-                        highlight = entry.rank == leaderboard.userRank
+                        name = if (isCurrentUser) currentUserName else entry.userId.take(8),
+                        score = formatKm(entry.distanceKm),
+                        highlight = isCurrentUser
                     )
                     if (index != leaderboard.entries.lastIndex) {
                         PanelDivider()
                     }
+                }
+                if (leaderboard.entries.isEmpty()) {
+                    AppBody("A sessão ainda não tem distâncias registradas no leaderboard.")
                 }
             }
         }
@@ -161,4 +166,9 @@ private fun LeaderboardRow(
             }
         }
     )
+}
+
+private fun formatKm(value: Double): String {
+    val rounded = kotlin.math.round(value * 100.0) / 100.0
+    return "$rounded km"
 }

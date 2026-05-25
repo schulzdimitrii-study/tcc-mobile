@@ -32,6 +32,7 @@ import com.pedroaba.tccmobile.auth.AuthManager
 import com.pedroaba.tccmobile.auth.AuthResult
 import com.pedroaba.tccmobile.auth.AuthState
 import com.pedroaba.tccmobile.backend.http.BackendHttpClient
+import com.pedroaba.tccmobile.backend.http.isBackendAuthFailure
 import com.pedroaba.tccmobile.backend.online.OnlineSessionRepository
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.backend.online.SessionApi
@@ -257,8 +258,12 @@ class MainActivity : ComponentActivity() {
                     }
                 }
                 "rank" -> {
+                    LaunchedEffect(remoteSessionState.sessionId, session.token, session.userId) {
+                        loadLeaderboardForSession(session)
+                    }
                     com.pedroaba.tccmobile.features.ranking.screens.RankingScreen(
                         remoteSessionState = remoteSessionState,
+                        currentUserId = session.userId,
                         currentUserName = session.name,
                         onTabSelected = { currentTab = it }
                     )
@@ -456,7 +461,7 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = onlineSessionRepository.loadHordes(session.token)
             if (result.isFailure) {
-                Log.e(TAG, "Failed to load hordes", result.exceptionOrNull())
+                handleBackendFailure("Failed to load hordes", result.exceptionOrNull())
             }
         }
     }
@@ -473,7 +478,7 @@ class MainActivity : ComponentActivity() {
                 onFailure = { error ->
                     val message = error.message ?: "Nao foi possivel carregar o perfil."
                     userProfileState = userProfileState.failed(message)
-                    Log.e(TAG, "Failed to load user profile", error)
+                    handleBackendFailure("Failed to load user profile", error)
                 }
             )
         }
@@ -495,7 +500,7 @@ class MainActivity : ComponentActivity() {
                 onFailure = { error ->
                     val message = error.message ?: "Nao foi possivel salvar o perfil."
                     userProfileState = userProfileState.failed(message)
-                    Log.e(TAG, "Failed to update user profile", error)
+                    handleBackendFailure("Failed to update user profile", error)
                 }
             )
         }
@@ -529,11 +534,12 @@ class MainActivity : ComponentActivity() {
             val result = onlineSessionRepository.startSession(authenticatedSession.token)
             if (result.isSuccess) {
                 pendingTelemetryStart = false
+                loadLeaderboardForSession(authenticatedSession)
                 telemetryRuntime.repository.startSession()
                 TelemetryForegroundService.start(this@MainActivity)
             } else {
                 pendingTelemetryStart = false
-                Log.e(TAG, "Failed to start online session", result.exceptionOrNull())
+                handleBackendFailure("Failed to start online session", result.exceptionOrNull())
             }
         }
     }
@@ -554,7 +560,27 @@ class MainActivity : ComponentActivity() {
             if (result.isSuccess) {
                 stopLocalTelemetrySession()
             } else {
-                Log.e(TAG, "Failed to end online session", result.exceptionOrNull())
+                handleBackendFailure("Failed to end online session", result.exceptionOrNull())
+            }
+        }
+    }
+
+    private fun loadLeaderboardForSession(session: UserSession) {
+        if (onlineSessionRepository.state.value.sessionId == null) return
+
+        lifecycleScope.launch {
+            val result = onlineSessionRepository.refreshLeaderboard(session.token, session.userId)
+            if (result.isFailure) {
+                handleBackendFailure("Failed to load leaderboard", result.exceptionOrNull())
+            }
+        }
+    }
+
+    private fun handleBackendFailure(message: String, error: Throwable?) {
+        Log.e(TAG, message, error)
+        if (error?.isBackendAuthFailure() == true) {
+            lifecycleScope.launch {
+                authManager.logout()
             }
         }
     }

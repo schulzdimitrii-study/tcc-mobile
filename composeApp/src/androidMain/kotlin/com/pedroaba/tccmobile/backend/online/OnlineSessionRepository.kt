@@ -37,6 +37,23 @@ class OnlineSessionRepository(
         _state.value = _state.value.onHordeSelected(hordeId)
     }
 
+    suspend fun refreshLeaderboard(token: String, currentUserId: String): Result<Unit> {
+        val sessionId = _state.value.sessionId
+            ?: return Result.failure(IllegalStateException("Nenhuma sessao online em andamento."))
+
+        return sessionApi.getLeaderboard(token, sessionId, currentUserId).fold(
+            onSuccess = { leaderboard ->
+                _state.value = _state.value.onLeaderboardUpdated(leaderboard)
+                Result.success(Unit)
+            },
+            onFailure = { error ->
+                val message = error.message ?: "Nao foi possivel carregar o leaderboard."
+                _state.value = _state.value.copy(errorMessage = message)
+                Result.failure(error)
+            }
+        )
+    }
+
     suspend fun startSession(token: String): Result<String> {
         val currentState = _state.value
         if (currentState.sessionId != null && currentState.status != RemoteSessionStatus.IDLE) {
@@ -44,18 +61,13 @@ class OnlineSessionRepository(
         }
 
         val selectedHorde = currentState.selectedHorde
-        if (selectedHorde == null) {
-            val message = "Selecione uma horda antes de iniciar."
-            _state.value = _state.value.onSessionStartFailed(message)
-            return Result.failure(IllegalStateException(message))
-        }
 
         _state.value = _state.value.copy(
             status = RemoteSessionStatus.STARTING,
             errorMessage = null
         )
 
-        return sessionApi.startSession(token, StartSessionRequest(hordeId = selectedHorde.id)).fold(
+        return sessionApi.startSession(token, StartSessionRequest(hordeId = selectedHorde?.id)).fold(
             onSuccess = { response ->
                 _state.value = _state.value.onSessionStarted(response.sessionId)
                 stompWebSocketClient.connect(

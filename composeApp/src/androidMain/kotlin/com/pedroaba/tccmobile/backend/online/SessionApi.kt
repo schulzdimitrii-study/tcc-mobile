@@ -4,6 +4,8 @@ import com.pedroaba.tccmobile.backend.http.BackendHttpClient
 import com.pedroaba.tccmobile.backend.http.bearerAuth
 import com.pedroaba.tccmobile.backend.http.safeApiCall
 import com.pedroaba.tccmobile.backend.model.HordeDto
+import com.pedroaba.tccmobile.backend.model.LeaderboardEntryDto
+import com.pedroaba.tccmobile.backend.model.LeaderboardResponse
 import com.pedroaba.tccmobile.backend.model.StartSessionRequest
 import com.pedroaba.tccmobile.backend.model.StartSessionResponse
 import io.ktor.client.call.body
@@ -41,6 +43,23 @@ class SessionApi(
         decodeHordesResponse(responseBody)
     }
 
+    suspend fun getLeaderboard(
+        token: String,
+        sessionId: String,
+        currentUserId: String
+    ): Result<LeaderboardResponse> = safeApiCall {
+        val responseBody = backendHttpClient.client.get("/sessions/$sessionId/leaderboard") {
+            bearerAuth(token)
+        }.bodyAsText()
+
+        decodeLeaderboardResponse(
+            json = json,
+            sessionId = sessionId,
+            currentUserId = currentUserId,
+            responseBody = responseBody
+        )
+    }
+
     suspend fun endSession(
         token: String,
         sessionId: String
@@ -72,4 +91,33 @@ class SessionApi(
 
     private fun decodeHordeArray(element: JsonArray): List<HordeDto> =
         element.map { json.decodeFromJsonElement(it) }
+
+}
+
+internal fun decodeLeaderboardResponse(
+    json: Json,
+    sessionId: String,
+    currentUserId: String,
+    responseBody: String
+): LeaderboardResponse {
+    val element = json.parseToJsonElement(responseBody)
+    return when (element) {
+        is JsonArray -> {
+            val entries = element.map { json.decodeFromJsonElement<LeaderboardEntryDto>(it) }
+            LeaderboardResponse(
+                sessionId = sessionId,
+                userRank = entries.firstOrNull { it.userId == currentUserId }?.rank ?: 0,
+                hordeVirtualDistanceKm = null,
+                entries = entries
+            )
+        }
+
+        is JsonObject -> json.decodeFromJsonElement(element)
+        else -> LeaderboardResponse(
+            sessionId = sessionId,
+            userRank = 0,
+            hordeVirtualDistanceKm = null,
+            entries = emptyList()
+        )
+    }
 }

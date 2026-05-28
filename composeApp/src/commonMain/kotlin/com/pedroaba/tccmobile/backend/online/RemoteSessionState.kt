@@ -25,6 +25,7 @@ data class RemoteSessionState(
     val leaderboard: LeaderboardResponse? = null,
     val hordes: List<HordeDto> = emptyList(),
     val selectedHorde: HordeDto? = null,
+    val usesManualHordeConfig: Boolean = false,
     val hordeCatalogStatus: HordeCatalogStatus = HordeCatalogStatus.IDLE,
     val errorMessage: String? = null
 ) {
@@ -41,7 +42,7 @@ data class RemoteSessionState(
 
         return copy(
             hordes = newHordes,
-            selectedHorde = currentSelection ?: fallbackSelection,
+            selectedHorde = if (usesManualHordeConfig) null else currentSelection ?: fallbackSelection,
             hordeCatalogStatus = HordeCatalogStatus.LOADED,
             errorMessage = null
         )
@@ -53,7 +54,13 @@ data class RemoteSessionState(
     )
 
     fun onHordeSelected(hordeId: String): RemoteSessionState = copy(
-        selectedHorde = hordes.firstOrNull { it.id == hordeId } ?: selectedHorde
+        selectedHorde = hordes.firstOrNull { it.id == hordeId } ?: selectedHorde,
+        usesManualHordeConfig = false
+    )
+
+    fun onManualHordeConfigured(): RemoteSessionState = copy(
+        selectedHorde = null,
+        usesManualHordeConfig = true
     )
 
     fun onSessionStarted(newSessionId: String): RemoteSessionState = copy(
@@ -98,7 +105,15 @@ data class RemoteSessionState(
     )
 
     fun onRealtimeFailure(message: String): RemoteSessionState = copy(
-        status = RemoteSessionStatus.ERROR,
-        errorMessage = message
+        status = if (status == RemoteSessionStatus.ENDING || status == RemoteSessionStatus.IDLE) {
+            status
+        } else {
+            RemoteSessionStatus.ERROR
+        },
+        errorMessage = if (status == RemoteSessionStatus.ENDING || status == RemoteSessionStatus.IDLE) {
+            errorMessage
+        } else {
+            message
+        }
     )
 }

@@ -37,6 +37,10 @@ class OnlineSessionRepository(
         _state.value = _state.value.onHordeSelected(hordeId)
     }
 
+    fun useManualHordeConfig() {
+        _state.value = _state.value.onManualHordeConfigured()
+    }
+
     suspend fun refreshLeaderboard(token: String, currentUserId: String): Result<Unit> {
         val sessionId = _state.value.sessionId
             ?: return Result.failure(IllegalStateException("Nenhuma sessao online em andamento."))
@@ -97,11 +101,11 @@ class OnlineSessionRepository(
             ?: return Result.failure(IllegalStateException("Nenhuma sessao online em andamento."))
 
         _state.value = _state.value.onSessionEndRequested()
+        stompWebSocketClient.disconnect()
+        lastTelemetrySentAtMs = 0L
 
         return sessionApi.endSession(token, sessionId).fold(
             onSuccess = {
-                stompWebSocketClient.disconnect()
-                lastTelemetrySentAtMs = 0L
                 _state.value = _state.value.onSessionEnded()
                 Result.success(Unit)
             },
@@ -141,5 +145,11 @@ class OnlineSessionRepository(
 
     fun clear() {
         stompWebSocketClient.disconnect()
+    }
+
+    fun clearActiveSession() {
+        stompWebSocketClient.disconnect()
+        lastTelemetrySentAtMs = 0L
+        _state.value = _state.value.onSessionEnded()
     }
 }

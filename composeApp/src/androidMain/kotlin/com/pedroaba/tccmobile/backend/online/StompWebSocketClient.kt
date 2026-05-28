@@ -22,6 +22,7 @@ class StompWebSocketClient(
     private var webSocket: WebSocket? = null
     private var currentSessionId: String? = null
     private val connected = AtomicBoolean(false)
+    private val intentionalDisconnect = AtomicBoolean(false)
 
     fun connect(
         sessionId: String,
@@ -30,6 +31,7 @@ class StompWebSocketClient(
         onFailure: (String) -> Unit
     ) {
         disconnect()
+        intentionalDisconnect.set(false)
         currentSessionId = sessionId
         webSocket = okHttpClient.newWebSocket(
             Request.Builder().url(BackendConfig.webSocketUrl).build(),
@@ -83,6 +85,7 @@ class StompWebSocketClient(
 
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     connected.set(false)
+                    if (intentionalDisconnect.get()) return
                     onFailure(t.message ?: "Falha ao conectar ao leaderboard em tempo real.")
                 }
 
@@ -98,7 +101,7 @@ class StompWebSocketClient(
         val frame = buildFrame(
             command = "SEND",
             headers = mapOf(
-                "destination" to "/app/treino/dados",
+                "destination" to "/app/train/data",
                 "content-type" to "application/json"
             ),
             body = json.encodeToString(message)
@@ -109,6 +112,7 @@ class StompWebSocketClient(
     fun isConnected(): Boolean = connected.get()
 
     fun disconnect() {
+        intentionalDisconnect.set(true)
         connected.set(false)
         webSocket?.send(buildFrame(command = "DISCONNECT"))
         webSocket?.close(1000, "client disconnect")

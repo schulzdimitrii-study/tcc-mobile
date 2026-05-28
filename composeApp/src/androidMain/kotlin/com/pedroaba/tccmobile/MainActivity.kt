@@ -35,6 +35,7 @@ import com.pedroaba.tccmobile.backend.http.BackendHttpClient
 import com.pedroaba.tccmobile.backend.http.isBackendAuthFailure
 import com.pedroaba.tccmobile.backend.online.OnlineSessionRepository
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
+import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
 import com.pedroaba.tccmobile.backend.online.SessionApi
 import com.pedroaba.tccmobile.backend.online.StompWebSocketClient
 import com.pedroaba.tccmobile.backend.online.toSessionConfig
@@ -44,6 +45,8 @@ import com.pedroaba.tccmobile.features.auth.screens.LoginScreen
 import com.pedroaba.tccmobile.features.auth.screens.SignupScreen
 import com.pedroaba.tccmobile.features.game.screens.GameScreen
 import com.pedroaba.tccmobile.game.models.GameSnapshot
+import com.pedroaba.tccmobile.game.models.LocalHordeConfig
+import com.pedroaba.tccmobile.game.models.toSessionConfig
 import com.pedroaba.tccmobile.features.home.screens.HomeScreen
 import com.pedroaba.tccmobile.telemetry.service.AndroidTelemetryRuntime
 import com.pedroaba.tccmobile.telemetry.service.TelemetryForegroundService
@@ -73,6 +76,7 @@ class MainActivity : ComponentActivity() {
     private var showWatchModal by mutableStateOf(false)
     private var latestGameSnapshot by mutableStateOf(GameSnapshot())
     private var userProfileState by mutableStateOf(UserProfileState())
+    private var localHordeConfig by mutableStateOf(LocalHordeConfig())
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -248,7 +252,10 @@ class MainActivity : ComponentActivity() {
                             selectedHordeId = remoteSessionState.selectedHorde?.id,
                             hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                             hordeErrorMessage = remoteSessionState.errorMessage,
+                            localHordeConfig = localHordeConfig,
                             onHordeSelected = onlineSessionRepository::selectHorde,
+                            onUseManualHordeConfig = onlineSessionRepository::useManualHordeConfig,
+                            onLocalHordeConfigChanged = { localHordeConfig = it },
                             onReloadHordes = { loadHordesForSession(session) },
                             onStartRun = onStartTelemetry,
                             onViewProfile = { currentTab = "perfil" },
@@ -326,8 +333,9 @@ class MainActivity : ComponentActivity() {
                     GameScreen(
                         telemetryStateFlow = telemetryStateFlow,
                         remoteSessionState = remoteSessionState,
+                        currentUserId = session.userId,
                         gameSessionConfig = remoteSessionState.selectedHorde?.toSessionConfig()
-                            ?: com.pedroaba.tccmobile.game.models.SessionConfig(),
+                            ?: localHordeConfig.toSessionConfig(),
                         currentTimeMsProvider = { SystemClock.elapsedRealtime() },
                         onSnapshotChanged = { latestGameSnapshot = it },
                         onStartTelemetrySession = onStartTelemetry,
@@ -343,7 +351,10 @@ class MainActivity : ComponentActivity() {
                         selectedHordeId = remoteSessionState.selectedHorde?.id,
                         hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                         hordeErrorMessage = remoteSessionState.errorMessage,
+                        localHordeConfig = localHordeConfig,
                         onHordeSelected = onlineSessionRepository::selectHorde,
+                        onUseManualHordeConfig = onlineSessionRepository::useManualHordeConfig,
+                        onLocalHordeConfigChanged = { localHordeConfig = it },
                         onReloadHordes = { loadHordesForSession(session) },
                         onStartRun = onStartTelemetry,
                         onViewProfile = { currentTab = "perfil" },
@@ -555,11 +566,10 @@ class MainActivity : ComponentActivity() {
             return
         }
 
+        stopLocalTelemetrySession()
         lifecycleScope.launch {
             val result = onlineSessionRepository.endSession(authenticatedSession.token)
-            if (result.isSuccess) {
-                stopLocalTelemetrySession()
-            } else {
+            if (result.isFailure) {
                 handleBackendFailure("Failed to end online session", result.exceptionOrNull())
             }
         }
@@ -588,6 +598,9 @@ class MainActivity : ComponentActivity() {
     private fun stopLocalTelemetrySession() {
         pendingTelemetryStart = false
         telemetryRuntime.repository.stopSession()
+        if (onlineSessionRepository.state.value.status == RemoteSessionStatus.ERROR) {
+            onlineSessionRepository.clearActiveSession()
+        }
         TelemetryForegroundService.stop(this)
     }
 

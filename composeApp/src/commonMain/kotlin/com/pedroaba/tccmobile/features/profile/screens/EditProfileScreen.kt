@@ -32,6 +32,8 @@ import com.pedroaba.tccmobile.ui.components.AppSecondary
 import com.pedroaba.tccmobile.ui.components.AppTextInput
 import com.pedroaba.tccmobile.ui.components.AppTitle
 import com.pedroaba.tccmobile.ui.components.TopIdentityHeader
+import com.pedroaba.tccmobile.ui.format.formatHeightMetersToCm
+import com.pedroaba.tccmobile.ui.format.parseHeightCmToMeters
 
 @Composable
 fun EditProfileScreen(
@@ -47,7 +49,7 @@ fun EditProfileScreen(
     var name by remember { mutableStateOf(profile?.name ?: userName) }
     var email by remember { mutableStateOf(profile?.email ?: userEmail) }
     var birthdayDate by remember { mutableStateOf(profile?.birthdayDate.orEmpty()) }
-    var height by remember { mutableStateOf(profile?.height?.toString().orEmpty()) }
+    var height by remember { mutableStateOf(profile?.height?.let(::formatHeightMetersToCm).orEmpty()) }
     var weight by remember { mutableStateOf(profile?.weight?.toString().orEmpty()) }
     var validationError by remember { mutableStateOf<String?>(null) }
     val isSaving = userProfileState.status == UserProfileStatus.SAVING
@@ -56,7 +58,7 @@ fun EditProfileScreen(
         name = profile?.name ?: userName
         email = profile?.email ?: userEmail
         birthdayDate = profile?.birthdayDate.orEmpty()
-        height = profile?.height?.toString().orEmpty()
+        height = profile?.height?.let(::formatHeightMetersToCm).orEmpty()
         weight = profile?.weight?.toString().orEmpty()
         validationError = null
     }
@@ -100,10 +102,10 @@ fun EditProfileScreen(
                     AppTextInput(
                         value = height,
                         onValueChange = { height = it },
-                        placeholder = "Ex: 1.76",
+                        placeholder = "Ex: 176",
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                     )
-                    AppCaption("Use metros.")
+                    AppCaption("Use centímetros.")
                 }
                 AppFormField {
                     AppFormLabel("Peso")
@@ -177,13 +179,13 @@ private fun buildUpdateRequest(
         return null
     }
 
-    val parsedHeight = height.trim().ifBlank { null }?.toDoubleOrNull()
+    val parsedHeight = parseHeightCmToMeters(height)
     if (height.isNotBlank() && parsedHeight == null) {
-        onInvalid("Informe a altura em metros usando ponto decimal.")
+        onInvalid("Informe a altura em centímetros.")
         return null
     }
 
-    val parsedWeight = weight.trim().ifBlank { null }?.toDoubleOrNull()
+    val parsedWeight = weight.replace(",", ".").trim().ifBlank { null }?.toDoubleOrNull()
     if (weight.isNotBlank() && parsedWeight == null) {
         onInvalid("Informe o peso em kg usando ponto decimal.")
         return null

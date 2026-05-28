@@ -24,6 +24,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
@@ -51,7 +52,10 @@ import com.pedroaba.tccmobile.ui.components.AppSpinner
 import com.pedroaba.tccmobile.ui.components.AppTextInput
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 
 @Composable
 fun LoginScreen(
@@ -63,6 +67,7 @@ fun LoginScreen(
 ) {
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
     var keepConnected by remember { mutableStateOf(false) }
     var emailError by remember { mutableStateOf<String?>(null) }
     var passwordError by remember { mutableStateOf<String?>(null) }
@@ -130,7 +135,31 @@ fun LoginScreen(
                                     passwordError = null
                                 },
                                 placeholder = "********",
-                                visualTransformation = PasswordVisualTransformation()
+                                visualTransformation = if (isPasswordVisible) {
+                                    VisualTransformation.None
+                                } else {
+                                    PasswordVisualTransformation()
+                                },
+                                trailingContent = {
+                                    IconButton(
+                                        onClick = { isPasswordVisible = !isPasswordVisible },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPasswordVisible) {
+                                                Icons.Filled.VisibilityOff
+                                            } else {
+                                                Icons.Filled.Visibility
+                                            },
+                                            contentDescription = if (isPasswordVisible) {
+                                                "Ocultar senha"
+                                            } else {
+                                                "Mostrar senha"
+                                            },
+                                            tint = AppTheme.colors.textSecondary
+                                        )
+                                    }
+                                }
                             )
                             passwordError?.let { AppFormError(it) }
                         }

@@ -101,6 +101,21 @@ class RemoteSessionStateTest {
     }
 
     @Test
+    fun `hordes loaded keeps manual configuration without selecting fallback`() {
+        val hordes = listOf(
+            HordeDto(id = "horde-1", name = "Centro", difficulty = "EASY")
+        )
+
+        val updated = RemoteSessionState()
+            .onManualHordeConfigured()
+            .onHordesLoaded(hordes)
+
+        assertEquals(hordes, updated.hordes)
+        assertNull(updated.selectedHorde)
+        assertEquals(true, updated.usesManualHordeConfig)
+    }
+
+    @Test
     fun `horde selection ignores unknown id and preserves previous selection`() {
         val selected = HordeDto(id = "horde-1", name = "Centro")
         val current = RemoteSessionState(

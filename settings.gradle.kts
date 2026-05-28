@@ -25,6 +25,13 @@ dependencyResolutionManagement {
             }
         }
         mavenCentral()
+        maven("https://maven.pkg.jetbrains.space/public/p/compose/dev") {
+            name = "JetBrains Compose Dev"
+            mavenContent {
+                includeGroupAndSubgroups("org.jetbrains.compose")
+                includeGroupAndSubgroups("org.jetbrains.androidx")
+            }
+        }
     }
 }
 

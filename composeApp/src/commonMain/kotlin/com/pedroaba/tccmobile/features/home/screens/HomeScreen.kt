@@ -4,9 +4,16 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.backend.model.HordeDto
 import com.pedroaba.tccmobile.backend.online.HordeCatalogStatus
@@ -15,16 +22,22 @@ import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
 import com.pedroaba.tccmobile.backend.online.displayDifficulty
 import com.pedroaba.tccmobile.backend.online.displayDuration
 import com.pedroaba.tccmobile.backend.online.displayPace
+import com.pedroaba.tccmobile.game.models.LocalHordeConfig
+import com.pedroaba.tccmobile.game.models.LocalHordeDifficulty
 import com.pedroaba.tccmobile.ui.components.AppBody
 import com.pedroaba.tccmobile.ui.components.AppButton
 import com.pedroaba.tccmobile.ui.components.AppButtonVariant
 import com.pedroaba.tccmobile.ui.components.AppCaption
 import com.pedroaba.tccmobile.ui.components.AppCallout
+import com.pedroaba.tccmobile.ui.components.AppFormError
+import com.pedroaba.tccmobile.ui.components.AppFormField
+import com.pedroaba.tccmobile.ui.components.AppFormLabel
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
 import com.pedroaba.tccmobile.ui.components.AppSecondary
 import com.pedroaba.tccmobile.ui.components.AppSecondarySemiBold
 import com.pedroaba.tccmobile.ui.components.AppSelect
 import com.pedroaba.tccmobile.ui.components.AppSelectOption
+import com.pedroaba.tccmobile.ui.components.AppTextInput
 import com.pedroaba.tccmobile.ui.components.FeatureCard
 import com.pedroaba.tccmobile.ui.components.ListPanel
 import com.pedroaba.tccmobile.ui.components.ListRow
@@ -47,7 +60,10 @@ fun HomeScreen(
     selectedHordeId: String? = null,
     hordeCatalogStatus: HordeCatalogStatus = HordeCatalogStatus.IDLE,
     hordeErrorMessage: String? = null,
+    localHordeConfig: LocalHordeConfig = LocalHordeConfig(),
     onHordeSelected: (String) -> Unit = {},
+    onUseManualHordeConfig: () -> Unit = {},
+    onLocalHordeConfigChanged: (LocalHordeConfig) -> Unit = {},
     onReloadHordes: () -> Unit = {},
     onStartRun: () -> Unit = {},
     onViewProfile: () -> Unit = {},
@@ -56,6 +72,7 @@ fun HomeScreen(
 ) {
     val selectedHorde = hordes.firstOrNull { it.id == selectedHordeId }
         ?: remoteSessionState.selectedHorde
+    val isManualConfig = selectedHorde == null
     val isLoadingHordes = hordeCatalogStatus == HordeCatalogStatus.LOADING
     val canStartHorde = selectedHorde?.id?.isNotBlank() == true && !isLoadingHordes
     val canStartFreeSession = !isLoadingHordes
@@ -65,6 +82,15 @@ fun HomeScreen(
     val isSessionActive = remoteSessionState.status == RemoteSessionStatus.ACTIVE ||
         remoteSessionState.status == RemoteSessionStatus.CONNECTING ||
         remoteSessionState.status == RemoteSessionStatus.STARTING
+    var distanceInput by remember { mutableStateOf(formatDistanceInput(localHordeConfig.distanceKm)) }
+    var distanceError by remember { mutableStateOf<String?>(null) }
+
+    LaunchedEffect(localHordeConfig.distanceKm) {
+        val formatted = formatDistanceInput(localHordeConfig.distanceKm)
+        if (distanceInput != formatted) {
+            distanceInput = formatted
+        }
+    }
 
     AppScreenScaffold {
         TopIdentityHeader(
@@ -79,10 +105,10 @@ fun HomeScreen(
 
         FeatureCard(
             eyebrow = if (canStartHorde) "HORDA PRONTA" else "TREINO LIVRE",
-            title = selectedHorde?.name ?: "Iniciar sem horda.",
+            title = selectedHorde?.name ?: "Configurar horda local.",
             body = selectedHorde?.let {
                 "${it.displayDifficulty()} · ${it.displayPace()} · ${it.displayDuration()}"
-            } ?: "O backend não expõe criação de hordas no contrato atual. Você ainda pode iniciar uma sessão livre.",
+            } ?: "${localHordeConfig.distanceKm} km · ${localHordeConfig.difficulty.label} · sessão livre no backend.",
             primaryAction = when {
                 isLoadingHordes -> "Carregando"
                 canStartHorde -> "Comecar horda"
@@ -94,6 +120,51 @@ fun HomeScreen(
             onSecondaryAction = onViewProfile,
             footer = {
                 PanelDivider()
+                AppFormField {
+                    AppFormLabel("Distância da corrida")
+                    AppTextInput(
+                        value = distanceInput,
+                        onValueChange = { value ->
+                            distanceInput = value
+                            val parsed = value.replace(",", ".").trim().toDoubleOrNull()
+                            if (parsed == null || parsed <= 0.0) {
+                                distanceError = "Informe a distância em km."
+                            } else {
+                                distanceError = null
+                                onUseManualHordeConfig()
+                                onLocalHordeConfigChanged(localHordeConfig.copy(distanceKm = parsed))
+                            }
+                        },
+                        placeholder = "Ex: 2.5",
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
+                    )
+                    AppCaption("Valor em km para a configuração local.")
+                    distanceError?.let { AppFormError(it) }
+                }
+                AppSelect(
+                    options = LocalHordeDifficulty.entries.map { difficulty ->
+                        AppSelectOption(
+                            label = difficulty.label,
+                            value = difficulty.name
+                        )
+                    },
+                    value = localHordeConfig.difficulty.name,
+                    onValueChange = { value ->
+                        val difficulty = LocalHordeDifficulty.valueOf(value)
+                        onUseManualHordeConfig()
+                        onLocalHordeConfigChanged(localHordeConfig.copy(difficulty = difficulty))
+                    },
+                    placeholder = "Dificuldade"
+                )
+                if (!isManualConfig) {
+                    AppButton(
+                        text = "Usar configuração local",
+                        onClick = onUseManualHordeConfig,
+                        modifier = Modifier.fillMaxWidth(),
+                        variant = AppButtonVariant.Outline
+                    )
+                }
+                PanelDivider()
                 if (hordes.isNotEmpty()) {
                     AppSelect(
                         options = hordes.map { horde ->
@@ -103,7 +174,10 @@ fun HomeScreen(
                             )
                         },
                         value = selectedHordeId,
-                        onValueChange = onHordeSelected,
+                        onValueChange = {
+                            distanceError = null
+                            onHordeSelected(it)
+                        },
                         placeholder = "Selecionar horda",
                         enabled = !isLoadingHordes
                     )
@@ -227,7 +301,7 @@ fun HomeScreen(
             onPrimaryAction = onShowWatchModal,
             secondaryAction = if (isSessionActive) "Abrir sessão" else "Iniciar com GPS",
             onSecondaryAction = onStartRun,
-            secondaryActionEnabled = isSessionActive || canStartHorde
+            secondaryActionEnabled = isSessionActive || canStartHorde || canStartFreeSession
         )
     }
 }
@@ -262,4 +336,13 @@ private fun RankingPreviewRow(
 private fun formatKm(value: Double): String {
     val rounded = round(value * 100.0) / 100.0
     return "$rounded km"
+}
+
+private fun formatDistanceInput(value: Double): String {
+    val rounded = round(value * 100.0) / 100.0
+    return if (rounded % 1.0 == 0.0) {
+        rounded.toInt().toString()
+    } else {
+        rounded.toString()
+    }
 }

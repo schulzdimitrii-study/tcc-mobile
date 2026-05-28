@@ -41,7 +41,8 @@ data class BiometricDataMessage(
 data class LeaderboardEntryDto(
     val userId: String,
     val rank: Int,
-    val distanceKm: Double
+    val distanceKm: Double,
+    val cardiacZone: String? = null
 )
 
 @Serializable
@@ -49,5 +50,7 @@ data class LeaderboardResponse(
     val sessionId: String,
     val userRank: Int,
     val hordeVirtualDistanceKm: Double?,
-    val entries: List<LeaderboardEntryDto>
+    val entries: List<LeaderboardEntryDto>,
+    val isBehindHorde: Boolean? = null,
+    val distanceToHorde: Double? = null
 )

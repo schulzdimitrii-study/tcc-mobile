@@ -45,6 +45,8 @@ class LeaderboardResponseDecoderTest {
                   "sessionId":"session-2",
                   "userRank":1,
                   "hordeVirtualDistanceKm":1.25,
+                  "isBehindHorde":false,
+                  "distanceToHorde":-2.75,
                   "entries":[{"userId":"u1","rank":1,"distanceKm":4.0}]
                 }
             """.trimIndent()
@@ -53,6 +55,8 @@ class LeaderboardResponseDecoderTest {
         assertEquals("session-2", response.sessionId)
         assertEquals(1, response.userRank)
         assertEquals(1.25, response.hordeVirtualDistanceKm)
+        assertEquals(false, response.isBehindHorde)
+        assertEquals(-2.75, response.distanceToHorde)
         assertEquals(1, response.entries.size)
     }
 

@@ -22,6 +22,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.theme.AppTheme
@@ -46,6 +47,10 @@ import com.pedroaba.tccmobile.ui.components.AppHero
 import com.pedroaba.tccmobile.ui.components.AppRootContainer
 import com.pedroaba.tccmobile.ui.components.AppSpinner
 import com.pedroaba.tccmobile.ui.components.AppTextInput
+import com.pedroaba.tccmobile.ui.format.parseHeightCmToMeters
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.IconButton
 
 @Composable
 fun SignupScreen(
@@ -61,6 +66,7 @@ fun SignupScreen(
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var isPasswordVisible by remember { mutableStateOf(false) }
 
     var emailError by remember { mutableStateOf<String?>(null) }
     var birthDateError by remember { mutableStateOf<String?>(null) }
@@ -76,14 +82,18 @@ fun SignupScreen(
         emailError = if (isValidEmail(trimmedEmail)) null else "E-mail inválido"
         nameError = if (trimmedName.isNotBlank()) null else "Nome inválido"
         passwordError = if (password.isNotBlank()) null else "Informe a senha"
+        val parsedHeight = parseHeightCmToMeters(height)?.toFloat()
+        val parsedWeight = weight.replace(",", ".").trim().ifBlank { null }?.toFloatOrNull()
+        heightError = if (height.isBlank() || parsedHeight != null) null else "Informe a altura em cm."
+        weightError = if (weight.isBlank() || parsedWeight != null) null else "Informe o peso em kg."
 
-        if (emailError == null && nameError == null && passwordError == null) {
+        if (emailError == null && nameError == null && passwordError == null && heightError == null && weightError == null) {
             onSignupRequested(
                 trimmedEmail,
                 birthDate,
                 trimmedName,
-                height.toFloatOrNull(),
-                weight.toFloatOrNull(),
+                parsedHeight,
+                parsedWeight,
                 password
             )
         }
@@ -173,7 +183,7 @@ fun SignupScreen(
                                         height = it
                                         heightError = null
                                     },
-                                    placeholder = "1.80 m",
+                                    placeholder = "180 cm",
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal)
                                 )
                                 heightError?.let { AppFormError(it) }
@@ -205,7 +215,31 @@ fun SignupScreen(
                                     passwordError = null
                                 },
                                 placeholder = "********",
-                                visualTransformation = PasswordVisualTransformation()
+                                visualTransformation = if (isPasswordVisible) {
+                                    VisualTransformation.None
+                                } else {
+                                    PasswordVisualTransformation()
+                                },
+                                trailingContent = {
+                                    IconButton(
+                                        onClick = { isPasswordVisible = !isPasswordVisible },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (isPasswordVisible) {
+                                                Icons.Filled.VisibilityOff
+                                            } else {
+                                                Icons.Filled.Visibility
+                                            },
+                                            contentDescription = if (isPasswordVisible) {
+                                                "Ocultar senha"
+                                            } else {
+                                                "Mostrar senha"
+                                            },
+                                            tint = AppTheme.colors.textSecondary
+                                        )
+                                    }
+                                }
                             )
                             passwordError?.let { AppFormError(it) }
                         }

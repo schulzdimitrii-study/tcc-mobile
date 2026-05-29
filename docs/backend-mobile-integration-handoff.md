@@ -17,12 +17,13 @@ O foco aqui e ajudar o time de backend a entender:
 
 - `POST /auth/login`
 - `POST /auth/register`
-- `POST /sessions/iniciar`
-- `POST /sessions/{sessionId}/encerrar`
+- `POST /sessions/start`
+- `POST /sessions/{sessionId}/finish`
 - WebSocket STOMP:
   - conexao em `/ws`
-  - envio de biometria em `/app/treino/dados`
+  - envio de biometria em `/app/train/data`
   - recebimento de leaderboard em `/topic/session/{sessionId}/leaderboard`
+  - recebimento do estado remoto do jogo em `/topic/session/{sessionId}/game-state`
 
 ### Ja refletido no app
 
@@ -32,6 +33,7 @@ O foco aqui e ajudar o time de backend a entender:
 - Encerramento de sessao remota ao finalizar a corrida.
 - Envio continuo de biometria derivada da telemetria local.
 - Atualizacao de ranking em tempo real durante a sessao ativa.
+- Atualizacao do estado remoto da corrida durante a sessao ativa.
 - Exibicao de `name` e `email` reais da sessao autenticada.
 
 ### Ainda nao coberto pelo backend atual
@@ -195,21 +197,23 @@ Implementado no escopo suportado hoje.
 
 ### O que o app usa
 
-- `POST /sessions/iniciar`
-- `POST /sessions/{sessionId}/encerrar`
+- `POST /sessions/start`
+- `POST /sessions/{sessionId}/finish`
 - `/ws`
-- `/app/treino/dados`
+- `/app/train/data`
 - `/topic/session/{sessionId}/leaderboard`
+- `/topic/session/{sessionId}/game-state`
 
 ### Fluxo atual no app
 
 1. Usuario inicia corrida.
-2. App abre sessao remota em `POST /sessions/iniciar`.
+2. App abre sessao remota em `POST /sessions/start`.
 3. Backend devolve `sessionId`.
 4. App conecta no WebSocket.
 5. App assina `/topic/session/{sessionId}/leaderboard`.
-6. App envia biometria em `/app/treino/dados`.
-7. Ao encerrar corrida, app chama `POST /sessions/{sessionId}/encerrar`.
+6. App assina `/topic/session/{sessionId}/game-state`.
+7. App envia biometria em `/app/train/data`.
+8. Ao encerrar corrida, app chama `POST /sessions/{sessionId}/finish`.
 
 ### Payload de biometria que o app envia
 

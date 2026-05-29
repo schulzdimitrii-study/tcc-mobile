@@ -32,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
+import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
 import com.pedroaba.tccmobile.game.GameController
 import com.pedroaba.tccmobile.game.KorgeGameView
 import com.pedroaba.tccmobile.game.debug.GameDebugLogger
@@ -68,6 +69,9 @@ fun GameScreen(
         val sessionConfig by gameController.sessionConfig.collectAsState()
         val isActive by gameController.isActive.collectAsState()
         val telemetryState = telemetryStateFlow?.collectAsState()?.value ?: TelemetryState()
+        val isRemotePreparing = remoteSessionState.status == RemoteSessionStatus.STARTING ||
+            remoteSessionState.status == RemoteSessionStatus.CONNECTING
+        val canUseSessionButton = !isSceneLoading && !isRemotePreparing
 
         LaunchedEffect(snapshot) {
             onSnapshotChanged(snapshot)
@@ -123,7 +127,7 @@ fun GameScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    if (isSceneLoading) {
+                    if (isSceneLoading || isRemotePreparing) {
                         Box(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -133,12 +137,14 @@ fun GameScreen(
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally
                             ) {
-                                CircularProgressIndicator(
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
                                 Spacer(modifier = Modifier.height(12.dp))
                                 Text(
-                                    text = "Carregando sprites...",
+                                    text = if (isRemotePreparing) {
+                                        remoteSessionState.status.loadingLabel()
+                                    } else {
+                                        "Carregando sprites..."
+                                    },
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
@@ -185,7 +191,7 @@ fun GameScreen(
 
                     Button(
                         onClick = {
-                            if (isSceneLoading) {
+                            if (!canUseSessionButton) {
                                 GameDebugLogger.log(
                                     "start-button",
                                 )
@@ -200,6 +206,7 @@ fun GameScreen(
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
+                        enabled = canUseSessionButton,
                         colors = ButtonDefaults.buttonColors(
                             containerColor = if (isActive)
                                 MaterialTheme.colorScheme.error 
@@ -208,7 +215,21 @@ fun GameScreen(
                             contentColor = MaterialTheme.colorScheme.onPrimary
                         )
                     ) {
-                        Text(if (isActive) "STOP SESSION" else "START SESSION")
+                        if (isRemotePreparing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(18.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
+                            Spacer(modifier = Modifier.size(8.dp))
+                        }
+                        Text(
+                            when {
+                                isRemotePreparing -> remoteSessionState.status.buttonLabel()
+                                isActive -> "STOP SESSION"
+                                else -> "START SESSION"
+                            }
+                        )
                     }
 
                     Spacer(modifier = Modifier.height(12.dp))
@@ -253,6 +274,7 @@ private fun GameProgressCard(
     currentUserId: String
 ) {
     val remoteLeaderboard = remoteSessionState.leaderboard
+    val remoteGameState = remoteSessionState.gameState
     val remoteUserDistanceMeters = remoteLeaderboard
         ?.entries
         ?.firstOrNull { it.userId == currentUserId }
@@ -261,19 +283,34 @@ private fun GameProgressCard(
     val remoteHordeDistanceMeters = remoteLeaderboard
         ?.hordeVirtualDistanceKm
         ?.let { it * 1_000.0 }
-    val runnerDistanceMeters = remoteUserDistanceMeters ?: snapshot.distance.coerceAtLeast(0.0)
-    val hordeDistanceMeters = remoteHordeDistanceMeters ?: 0.0
-    val runnerProgress = (runnerDistanceMeters / goalDistanceMeters)
+    val remoteGoalDistanceMeters = remoteGameState
+        ?.let { (it.playerPosition + it.distanceToGoal).takeIf { value -> value > 0.0 } }
+        ?.let { it * 1_000.0 }
+    val effectiveGoalDistanceMeters = remoteGoalDistanceMeters ?: goalDistanceMeters
+    val runnerDistanceMeters = remoteGameState?.playerPosition?.let { it * 1_000.0 }
+        ?: remoteUserDistanceMeters
+        ?: snapshot.distance.coerceAtLeast(0.0)
+    val hordeDistanceMeters = remoteGameState?.hordePosition?.let { it * 1_000.0 }
+        ?: remoteHordeDistanceMeters
+        ?: 0.0
+    val runnerProgress = (runnerDistanceMeters / effectiveGoalDistanceMeters)
         .coerceIn(0.0, 1.0)
         .toFloat()
-    val hordeProgress = (hordeDistanceMeters / goalDistanceMeters)
+    val hordeProgress = (hordeDistanceMeters / effectiveGoalDistanceMeters)
         .coerceIn(0.0, 1.0)
         .toFloat()
     val distanceLabel = "${roundToOneDecimal(runnerDistanceMeters)} m"
-    val goalLabel = "${roundToTwoDecimals(goalDistanceMeters / 1_000.0)} km"
-    val hordeLabel = remoteHordeDistanceMeters?.let { "${roundToOneDecimal(it)} m" } ?: "--"
-    val distanceToHordeLabel = remoteLeaderboard?.distanceToHorde
-        ?.let { "${roundToOneDecimal(kotlin.math.abs(it * 1_000.0))} m" }
+    val goalLabel = "${roundToTwoDecimals(effectiveGoalDistanceMeters / 1_000.0)} km"
+    val hordeLabel = if (remoteGameState != null || remoteHordeDistanceMeters != null) {
+        "${roundToOneDecimal(hordeDistanceMeters)} m"
+    } else {
+        "--"
+    }
+    val distanceToHordeMeters = remoteGameState?.distancePlayerToHorde?.let { it * 1_000.0 }
+        ?: remoteLeaderboard?.distanceToHorde?.let { kotlin.math.abs(it * 1_000.0) }
+    val distanceToHordeLabel = distanceToHordeMeters?.let { "${roundToOneDecimal(it)} m" }
+    val isBehindHorde = remoteGameState?.let { it.hordePosition >= it.playerPosition }
+        ?: remoteLeaderboard?.isBehindHorde
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -300,10 +337,18 @@ private fun GameProgressCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
+            remoteGameState?.let { gameState ->
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Estado remoto: ${gameState.gameStatus.name.lowercase()} · ${roundToOneDecimal(gameState.raceProgress)}%",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             distanceToHordeLabel?.let { label ->
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = if (remoteLeaderboard.isBehindHorde == true) {
+                    text = if (isBehindHorde == true) {
                         "Atrás da horda por $label"
                     } else {
                         "À frente da horda por $label"
@@ -383,3 +428,15 @@ private fun PositionMarker(
 private fun roundToOneDecimal(value: Double): Double = round(value * 10.0) / 10.0
 
 private fun roundToTwoDecimals(value: Double): Double = round(value * 100.0) / 100.0
+
+private fun RemoteSessionStatus.loadingLabel(): String = when (this) {
+    RemoteSessionStatus.STARTING -> "Abrindo sessao no servidor..."
+    RemoteSessionStatus.CONNECTING -> "Conectando com o servidor..."
+    else -> "Preparando sessao..."
+}
+
+private fun RemoteSessionStatus.buttonLabel(): String = when (this) {
+    RemoteSessionStatus.STARTING -> "STARTING SERVER SESSION"
+    RemoteSessionStatus.CONNECTING -> "CONNECTING SERVER"
+    else -> "WAITING SERVER"
+}

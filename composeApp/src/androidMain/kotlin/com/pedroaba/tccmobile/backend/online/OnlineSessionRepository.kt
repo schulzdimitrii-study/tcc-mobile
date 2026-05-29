@@ -3,14 +3,18 @@ package com.pedroaba.tccmobile.backend.online
 import com.pedroaba.tccmobile.backend.model.StartSessionRequest
 import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.withTimeout
 
 class OnlineSessionRepository(
     private val sessionApi: SessionApi,
     private val stompWebSocketClient: StompWebSocketClient,
-    private val currentTimeMsProvider: () -> Long = { System.currentTimeMillis() }
+    private val currentTimeMsProvider: () -> Long = { System.currentTimeMillis() },
+    private val connectionTimeoutMs: Long = 15_000L
 ) {
     private val _state = MutableStateFlow(RemoteSessionState())
     val state: StateFlow<RemoteSessionState> = _state.asStateFlow()
@@ -58,13 +62,21 @@ class OnlineSessionRepository(
         )
     }
 
-    suspend fun startSession(token: String): Result<String> {
+    suspend fun startSession(token: String, currentUserId: String): Result<String> {
         val currentState = _state.value
         if (currentState.sessionId != null && currentState.status != RemoteSessionStatus.IDLE) {
-            return Result.success(currentState.sessionId)
+            when (currentState.status) {
+                RemoteSessionStatus.ACTIVE -> return Result.success(currentState.sessionId)
+                RemoteSessionStatus.ERROR -> {
+                    stompWebSocketClient.disconnect()
+                    lastTelemetrySentAtMs = 0L
+                    _state.value = currentState.onSessionEnded()
+                }
+                else -> return Result.failure(IllegalStateException("A sessao online ainda esta conectando."))
+            }
         }
 
-        val selectedHorde = currentState.selectedHorde
+        val selectedHorde = _state.value.selectedHorde
 
         _state.value = _state.value.copy(
             status = RemoteSessionStatus.STARTING,
@@ -73,20 +85,42 @@ class OnlineSessionRepository(
 
         return sessionApi.startSession(token, StartSessionRequest(hordeId = selectedHorde?.id)).fold(
             onSuccess = { response ->
+                val connectionResult = CompletableDeferred<Result<String>>()
                 _state.value = _state.value.onSessionStarted(response.sessionId)
                 stompWebSocketClient.connect(
                     sessionId = response.sessionId,
                     onConnected = {
                         _state.value = _state.value.onSocketConnected()
+                        connectionResult.complete(Result.success(response.sessionId))
                     },
                     onLeaderboard = { leaderboard ->
                         _state.value = _state.value.onLeaderboardUpdated(leaderboard)
                     },
+                    onGameState = { gameState ->
+                        if (gameState.userId == currentUserId) {
+                            _state.value = _state.value.onGameStateUpdated(gameState)
+                        }
+                    },
                     onFailure = { message ->
                         _state.value = _state.value.onRealtimeFailure(message)
+                        if (!connectionResult.isCompleted) {
+                            connectionResult.complete(Result.failure(IllegalStateException(message)))
+                        }
                     }
                 )
-                Result.success(response.sessionId)
+                runCatching {
+                    withTimeout(connectionTimeoutMs) {
+                        connectionResult.await()
+                    }
+                }.getOrElse { error ->
+                    val message = if (error is TimeoutCancellationException) {
+                        "Tempo esgotado ao conectar com o servidor."
+                    } else {
+                        error.message ?: "Tempo esgotado ao conectar com o servidor."
+                    }
+                    _state.value = _state.value.onRealtimeFailure(message)
+                    Result.failure(IllegalStateException(message, error))
+                }
             },
             onFailure = { error ->
                 val message = error.message ?: "Nao foi possivel iniciar a sessao online."

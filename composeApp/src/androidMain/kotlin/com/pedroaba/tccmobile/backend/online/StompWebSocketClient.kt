@@ -2,6 +2,7 @@ package com.pedroaba.tccmobile.backend.online
 
 import com.pedroaba.tccmobile.backend.BackendConfig
 import com.pedroaba.tccmobile.backend.model.BiometricDataMessage
+import com.pedroaba.tccmobile.backend.model.GameStateResponse
 import com.pedroaba.tccmobile.backend.model.LeaderboardResponse
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -28,6 +29,7 @@ class StompWebSocketClient(
         sessionId: String,
         onConnected: () -> Unit,
         onLeaderboard: (LeaderboardResponse) -> Unit,
+        onGameState: (GameStateResponse) -> Unit,
         onFailure: (String) -> Unit
     ) {
         disconnect()
@@ -54,24 +56,28 @@ class StompWebSocketClient(
                             "CONNECTED" -> {
                                 connected.set(true)
                                 currentSessionId?.let { activeSessionId ->
-                                    webSocket.send(
-                                        buildFrame(
-                                            command = "SUBSCRIBE",
-                                            headers = mapOf(
-                                                "id" to "leaderboard-$activeSessionId",
-                                                "destination" to "/topic/session/$activeSessionId/leaderboard"
-                                            )
-                                        )
-                                    )
+                                    subscribeToSessionTopics(webSocket, activeSessionId)
                                     onConnected()
                                 }
                             }
 
                             "MESSAGE" -> {
-                                runCatching {
-                                    json.decodeFromString<LeaderboardResponse>(frame.body)
-                                }.onSuccess(onLeaderboard).onFailure {
-                                    onFailure("Nao foi possivel ler o leaderboard em tempo real.")
+                                when (frame.headers["destination"]) {
+                                    "/topic/session/$sessionId/leaderboard" -> {
+                                        runCatching {
+                                            json.decodeFromString<LeaderboardResponse>(frame.body)
+                                        }.onSuccess(onLeaderboard).onFailure {
+                                            onFailure("Nao foi possivel ler o leaderboard em tempo real.")
+                                        }
+                                    }
+
+                                    "/topic/session/$sessionId/game-state" -> {
+                                        runCatching {
+                                            json.decodeFromString<GameStateResponse>(frame.body)
+                                        }.onSuccess(onGameState).onFailure {
+                                            onFailure("Nao foi possivel ler o estado do jogo em tempo real.")
+                                        }
+                                    }
                                 }
                             }
 
@@ -141,27 +147,63 @@ class StompWebSocketClient(
         return headerBlock
     }
 
-    private fun parseFrames(text: String): List<StompFrame> {
-        return text
-            .split('\u0000')
-            .filter { it.isNotBlank() }
-            .mapNotNull { rawFrame ->
-                val lines = rawFrame.lines()
-                if (lines.isEmpty()) return@mapNotNull null
-
-                val command = lines.first().trim()
-                val bodyIndex = lines.indexOfFirst { it.isBlank() }
-                val body = if (bodyIndex >= 0) {
-                    lines.drop(bodyIndex + 1).joinToString("\n").trim()
-                } else {
-                    ""
-                }
-                StompFrame(command = command, body = body)
-            }
+    private fun subscribeToSessionTopics(webSocket: WebSocket, sessionId: String) {
+        webSocket.send(
+            buildFrame(
+                command = "SUBSCRIBE",
+                headers = mapOf(
+                    "id" to "leaderboard-$sessionId",
+                    "destination" to "/topic/session/$sessionId/leaderboard"
+                )
+            )
+        )
+        webSocket.send(
+            buildFrame(
+                command = "SUBSCRIBE",
+                headers = mapOf(
+                    "id" to "game-state-$sessionId",
+                    "destination" to "/topic/session/$sessionId/game-state"
+                )
+            )
+        )
     }
 }
 
-private data class StompFrame(
+internal fun parseFrames(text: String): List<StompFrame> {
+    return text
+        .split('\u0000')
+        .filter { it.isNotBlank() }
+        .mapNotNull { rawFrame ->
+            val lines = rawFrame.lines()
+            if (lines.isEmpty()) return@mapNotNull null
+
+            val command = lines.first().trim()
+            val bodyIndex = lines.indexOfFirst { it.isBlank() }
+            val headers = if (bodyIndex > 1) {
+                lines.subList(1, bodyIndex)
+                    .mapNotNull { line ->
+                        val separator = line.indexOf(':')
+                        if (separator <= 0) {
+                            null
+                        } else {
+                            line.substring(0, separator) to line.substring(separator + 1)
+                        }
+                    }
+                    .toMap()
+            } else {
+                emptyMap()
+            }
+            val body = if (bodyIndex >= 0) {
+                lines.drop(bodyIndex + 1).joinToString("\n").trim()
+            } else {
+                ""
+            }
+            StompFrame(command = command, headers = headers, body = body)
+        }
+}
+
+internal data class StompFrame(
     val command: String,
+    val headers: Map<String, String> = emptyMap(),
     val body: String
 )

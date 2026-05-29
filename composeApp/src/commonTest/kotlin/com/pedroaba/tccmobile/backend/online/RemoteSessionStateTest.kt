@@ -1,5 +1,7 @@
 package com.pedroaba.tccmobile.backend.online
 
+import com.pedroaba.tccmobile.backend.model.GameStateResponse
+import com.pedroaba.tccmobile.backend.model.GameStatusDto
 import com.pedroaba.tccmobile.backend.model.HordeDto
 import com.pedroaba.tccmobile.backend.model.LeaderboardEntryDto
 import com.pedroaba.tccmobile.backend.model.LeaderboardResponse
@@ -56,6 +58,30 @@ class RemoteSessionStateTest {
 
         assertEquals(RemoteSessionStatus.ACTIVE, updated.status)
         assertEquals(leaderboard, updated.leaderboard)
+    }
+
+    @Test
+    fun `game state update keeps active session data`() {
+        val gameState = GameStateResponse(
+            sessionId = "session-1",
+            userId = "u1",
+            playerPosition = 0.45,
+            hordePosition = 0.3,
+            distanceToGoal = 0.55,
+            distancePlayerToHorde = 0.15,
+            playerSpeed = 10.0,
+            hordeSpeed = 8.0,
+            raceProgress = 45.0,
+            gameStatus = GameStatusDto.RUNNING
+        )
+
+        val updated = RemoteSessionState(
+            sessionId = "session-1",
+            status = RemoteSessionStatus.CONNECTING
+        ).onGameStateUpdated(gameState)
+
+        assertEquals(RemoteSessionStatus.ACTIVE, updated.status)
+        assertEquals(gameState, updated.gameState)
     }
 
     @Test
@@ -139,6 +165,18 @@ class RemoteSessionStateTest {
                 hordeVirtualDistanceKm = 1.0,
                 entries = listOf(LeaderboardEntryDto("u1", 1, 2.0))
             ),
+            gameState = GameStateResponse(
+                sessionId = "session-1",
+                userId = "u1",
+                playerPosition = 2.0,
+                hordePosition = 1.0,
+                distanceToGoal = 0.0,
+                distancePlayerToHorde = 1.0,
+                playerSpeed = 9.0,
+                hordeSpeed = 8.0,
+                raceProgress = 100.0,
+                gameStatus = GameStatusDto.ESCAPED
+            ),
             errorMessage = "old"
         )
 
@@ -147,6 +185,7 @@ class RemoteSessionStateTest {
         assertEquals(RemoteSessionStatus.IDLE, updated.status)
         assertNull(updated.sessionId)
         assertNull(updated.leaderboard)
+        assertNull(updated.gameState)
         assertNull(updated.errorMessage)
     }
 

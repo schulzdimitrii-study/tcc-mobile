@@ -54,3 +54,24 @@ data class LeaderboardResponse(
     val isBehindHorde: Boolean? = null,
     val distanceToHorde: Double? = null
 )
+
+@Serializable
+enum class GameStatusDto {
+    RUNNING,
+    CAUGHT,
+    ESCAPED
+}
+
+@Serializable
+data class GameStateResponse(
+    val sessionId: String,
+    val userId: String,
+    val playerPosition: Double,
+    val hordePosition: Double,
+    val distanceToGoal: Double,
+    val distancePlayerToHorde: Double,
+    val playerSpeed: Double,
+    val hordeSpeed: Double,
+    val raceProgress: Double,
+    val gameStatus: GameStatusDto
+)

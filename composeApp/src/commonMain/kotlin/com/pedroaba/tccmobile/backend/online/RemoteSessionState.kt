@@ -1,6 +1,7 @@
 package com.pedroaba.tccmobile.backend.online
 
 import com.pedroaba.tccmobile.backend.model.HordeDto
+import com.pedroaba.tccmobile.backend.model.GameStateResponse
 import com.pedroaba.tccmobile.backend.model.LeaderboardResponse
 
 enum class RemoteSessionStatus {
@@ -23,6 +24,7 @@ data class RemoteSessionState(
     val sessionId: String? = null,
     val status: RemoteSessionStatus = RemoteSessionStatus.IDLE,
     val leaderboard: LeaderboardResponse? = null,
+    val gameState: GameStateResponse? = null,
     val hordes: List<HordeDto> = emptyList(),
     val selectedHorde: HordeDto? = null,
     val usesManualHordeConfig: Boolean = false,
@@ -67,6 +69,7 @@ data class RemoteSessionState(
         sessionId = newSessionId,
         status = RemoteSessionStatus.CONNECTING,
         leaderboard = null,
+        gameState = null,
         errorMessage = null
     )
 
@@ -90,6 +93,7 @@ data class RemoteSessionState(
         sessionId = null,
         status = RemoteSessionStatus.IDLE,
         leaderboard = null,
+        gameState = null,
         errorMessage = null
     )
 
@@ -101,6 +105,12 @@ data class RemoteSessionState(
     fun onLeaderboardUpdated(newLeaderboard: LeaderboardResponse): RemoteSessionState = copy(
         status = RemoteSessionStatus.ACTIVE,
         leaderboard = newLeaderboard,
+        errorMessage = null
+    )
+
+    fun onGameStateUpdated(newGameState: GameStateResponse): RemoteSessionState = copy(
+        status = RemoteSessionStatus.ACTIVE,
+        gameState = newGameState,
         errorMessage = null
     )
 

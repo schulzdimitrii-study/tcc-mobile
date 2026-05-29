@@ -4,6 +4,7 @@ import com.pedroaba.tccmobile.backend.model.BiometricDataMessage
 import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlin.math.round
+import kotlin.math.roundToInt
 
 fun buildBiometricDataMessage(
     sessionId: String,
@@ -23,7 +24,7 @@ fun buildBiometricDataMessage(
         sessionId = sessionId,
         userId = userId,
         timestamp = timestampMs,
-        bpm = telemetryState.latestBiofeedbackSample?.bpm ?: 0,
+        bpm = telemetryState.latestBiofeedbackSample?.bpm ?: estimateBpm(snapshot, speedKmH),
         cadence = estimatedCadence,
         speed = speedKmH,
         pace = pace,
@@ -39,3 +40,11 @@ fun buildBiometricDataMessage(
 private fun roundToOneDecimal(value: Double): Double = round(value * 10.0) / 10.0
 
 private fun roundToTwoDecimals(value: Double): Double = round(value * 100.0) / 100.0
+
+private fun estimateBpm(snapshot: GameSnapshot, speedKmH: Double): Int {
+    val effortFromPerformance = ((1.0 - snapshot.performanceScore.coerceIn(0.0, 1.0)) * 35.0)
+    val effortFromSpeed = (speedKmH * 3.0).coerceIn(0.0, 45.0)
+    return (95.0 + effortFromPerformance + effortFromSpeed)
+        .roundToInt()
+        .coerceIn(1, 220)
+}

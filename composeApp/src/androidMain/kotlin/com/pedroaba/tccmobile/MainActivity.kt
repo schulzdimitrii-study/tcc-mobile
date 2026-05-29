@@ -542,7 +542,7 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch {
-            val result = onlineSessionRepository.startSession(authenticatedSession.token)
+            val result = onlineSessionRepository.startSession(authenticatedSession.token, authenticatedSession.userId)
             if (result.isSuccess) {
                 pendingTelemetryStart = false
                 loadLeaderboardForSession(authenticatedSession)

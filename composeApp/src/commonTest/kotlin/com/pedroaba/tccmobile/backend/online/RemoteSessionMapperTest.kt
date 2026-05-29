@@ -73,4 +73,30 @@ class RemoteSessionMapperTest {
 
         assertNull(message)
     }
+
+    @Test
+    fun `uses estimated bpm when biofeedback sample is missing`() {
+        val telemetryState = TelemetryState(
+            session = MovementSession(status = TelemetrySessionStatus.RUNNING),
+            latestSample = TelemetrySample(
+                timestampMs = 5_000L,
+                totalDistanceMeters = 250.0,
+                distanceDeltaMeters = 10.0,
+                speedMetersPerSecond = 2.8,
+                derivedAccelerationMetersPerSecondSquared = 0.3,
+                effectiveAccelerationMetersPerSecondSquared = 0.2,
+                movementConfidence = 0.8
+            )
+        )
+
+        val message = buildBiometricDataMessage(
+            sessionId = "session-123",
+            userId = "user-456",
+            telemetryState = telemetryState,
+            snapshot = GameSnapshot(performanceScore = 0.65),
+            timestampMs = 9_999L
+        )
+
+        assertEquals(137, message?.bpm)
+    }
 }

@@ -1,0 +1,116 @@
+\section{Metodologia}
+
+\subsection{Arquitetura do Sistema}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.49\textwidth]{figuras/diagrama_jetpack_compose_kotlin.png}
+    \caption{Diagrama de blocos do projeto}
+    \label{fig:diagrama_de_blocos}
+\end{figure}
+
+\subsection{Aplicativo Mobile}
+
+O aplicativo mobile foi desenvolvido com Kotlin Multiplatform e Compose Multiplatform, adotando uma base compartilhada para interface, modelos de domínio e lógica de jogo, enquanto as integrações dependentes de plataforma ficam isoladas em implementações específicas do Android e do iOS. A aplicação funciona como o ponto de contato do usuário com a sessão gamificada: ela realiza autenticação, permite selecionar ou configurar a Horda, coleta sinais de movimento do dispositivo, atualiza a simulação local do jogo e envia dados ao backend em tempo real.
+
+A interface do aplicativo é construída com Compose Multiplatform e organizada por funcionalidades. As telas de autenticação permitem login e cadastro de usuários; a tela inicial apresenta as opções de Horda e o início da corrida; a tela de jogo exibe a cena gamificada, o estado da sessão, os sinais de telemetria e os indicadores de desempenho; a tela de ranking apresenta a classificação em tempo real; e as telas de perfil permitem visualizar e editar dados do usuário, além de acompanhar permissões relacionadas à telemetria.
+
+\vspace{0.2cm}
+\noindent\textbf{Pipeline de telemetria.}
+\vspace{0.2cm}
+
+O pipeline de telemetria é uma das partes centrais do aplicativo. No Android, a entrada dos sinais ocorre por meio do \texttt{FusedLocationTrackingService}, que obtém localização via Play Services Location, e do \texttt{AndroidMotionSensorService}, que lê amostras de aceleração do dispositivo. A arquitetura também define o contrato \texttt{WearTelemetryBridge} para integração com smartwatch, embora a implementação atual utilize \texttt{NoOpWearTelemetryBridge}, indicando que a ponte com wearable ainda não foi implementada de fato.
+
+Essas fontes são centralizadas pelo \texttt{DefaultTelemetryRepository}, que expõe um \texttt{StateFlow<TelemetryState>} para o restante da aplicação. O repositório controla o ciclo de vida da sessão de movimento, monitora disponibilidade de sensores e permissões, agrega localização, aceleração e possíveis sinais biométricos, e publica o estado atualizado da telemetria.
+
+O processamento dos sinais é mantido no código compartilhado sempre que possível. O \texttt{MovementTelemetryProcessor} suaviza velocidade e aceleração, calcula distância percorrida, filtra ruídos e detecta dados obsoletos. O \texttt{SelectTelemetryStrategyUseCase} escolhe a estratégia de processamento, alternando entre uso exclusivo de movimento e uso combinado de movimento com BPM quando houver biofeedback disponível. Por fim, o \texttt{ComputeEscapeMetricsUseCase} transforma a amostra processada em métricas normalizadas, como pontuação de movimento, ritmo, pressão e risco, que podem ser interpretadas pela lógica do jogo.
+
+\vspace{0.2cm}
+\noindent\textbf{Lógica de jogo e gamificação.}
+\vspace{0.2cm}
+
+A gamificação foi modelada como uma simulação de corrida e fuga. O usuário representa o corredor, enquanto a Horda atua como adversário virtual que pressiona o jogador ao longo da sessão. O domínio do jogo não acessa diretamente sensores Android; ele recebe apenas métricas abstratas, preservando a separação entre coleta nativa e regras de gameplay.
+
+O \texttt{GameController} concentra o estado da sessão e expõe o \texttt{GameSnapshot}, estrutura que representa distância percorrida, velocidade do corredor, velocidade da Horda, pressão, risco, pontuação de desempenho, tempo decorrido e resultado da sessão. Os cálculos principais ficam no \texttt{RunCalculator}, que converte as métricas recebidas em evolução da corrida e determina se o usuário continua correndo, escapou ou foi alcançado pela Horda.
+
+A visualização do jogo é renderizada com KorGE. A cena principal, definida em \texttt{MainScene}, monta o fundo com parallax, o corredor e as unidades da Horda. A cada atualização, a cena lê o \texttt{GameSnapshot} produzido pelo controlador e ajusta os elementos visuais de acordo com o estado lógico da sessão. Dessa forma, a camada visual reflete o domínio do jogo, sem criar uma fonte paralela de verdade para a simulação.
+
+\vspace{0.2cm}
+\noindent\textbf{Integração em tempo real com o backend.}
+\vspace{0.2cm}
+
+A comunicação com o backend combina chamadas REST e WebSocket com STOMP. As chamadas REST são usadas para autenticação, cadastro, carregamento de Hordas, criação de sessão, consulta do leaderboard e encerramento da sessão. Após a autenticação, o token JWT retornado pelo backend é persistido localmente com Android DataStore e enviado nas requisições protegidas.
+
+Ao iniciar uma corrida, o aplicativo solicita ao backend a criação de uma sessão por meio do endpoint \texttt{/sessions/start}. Em seguida, o cliente \texttt{StompWebSocketClient} abre conexão no endpoint \texttt{/ws}, assina os tópicos \texttt{/topic/session/\{sessionId\}/leaderboard} e \texttt{/topic/session/\{sessionId\}/game-state}, e passa a receber atualizações de ranking e estado remoto do jogo.
+
+Durante a sessão, o \texttt{OnlineSessionRepository} combina o estado de telemetria local com o \texttt{GameSnapshot} mais recente e envia mensagens biométricas para o destino STOMP \texttt{/app/train/data}. O envio é limitado a uma atualização por segundo, reduzindo tráfego desnecessário e mantendo frequência suficiente para atualização do ranking em tempo real. Ao finalizar a corrida, o aplicativo encerra a coleta local, desconecta o WebSocket e solicita ao backend o fechamento da sessão pelo endpoint \texttt{/sessions/\{sessionId\}/finish}.
+
+\vspace{0.2cm}
+\noindent\textbf{Permissões e execução em primeiro plano.}
+\vspace{0.2cm}
+
+Como a sessão depende de sinais físicos do dispositivo, a versão Android verifica permissões e disponibilidade antes de iniciar a coleta. O aplicativo exige permissão de localização, autorização de notificação em versões recentes do Android, provedor de localização ativo e sensor de movimento disponível. Caso algum requisito esteja ausente, o usuário é direcionado para a tela de permissões de telemetria.
+
+Durante a corrida, o \texttt{TelemetryForegroundService} mantém a sessão ativa em primeiro plano e atualiza a notificação associada ao acompanhamento. Essa estratégia evita que a coleta seja interrompida de forma prematura pelo sistema operacional durante uma sessão em andamento, ao mesmo tempo em que mantém transparência para o usuário sobre a execução da telemetria.
+
+\vspace{0.2cm}
+\noindent\textbf{Qualidade e testes no mobile.}
+\vspace{0.2cm}
+
+A base de testes está concentrada principalmente no código compartilhado e em componentes Android específicos. Há testes para o \texttt{GameController}, para o \texttt{RunCalculator}, para o processamento de telemetria com \texttt{MovementTelemetryProcessor}, para o cálculo de métricas com \texttt{ComputeEscapeMetricsUseCase} e para a conversão de dados remotos recebidos do backend. Também existem testes unitários Android para decodificação de mensagens de leaderboard e testes instrumentados voltados a componentes de interface.
+
+Essa distribuição de testes prioriza os pontos de maior risco arquitetural: as regras de gamificação, a transformação de sinais físicos em métricas compreensíveis pelo jogo e a compatibilidade entre o aplicativo mobile e os contratos expostos pelo backend.
+
+\subsection{Backend}
+
+O \textit{backend} da aplicação foi desenvolvido com Spring Boot 3.4.4 e Kotlin 2.1.20, seguindo uma arquitetura em camadas que separa responsabilidades entre apresentação, lógica de negócio e persistência. A escolha por Kotlin sobre a JVM permite aproveitar a maturidade do ecossistema Spring ao mesmo tempo que oferece concisão sintática e \textit{null safety} em nível de linguagem, características relevantes para a robustez de uma API com múltiplos fluxos de dados concorrentes.
+
+\vspace{0.2cm}
+\noindent\textbf{Organização em camadas.}
+\vspace{0.2cm}
+
+A estrutura interna do \textit{backend} é organizada em quatro camadas horizontais, cada uma com responsabilidade bem delimitada.
+
+A \textbf{camada de configuração} reúne componentes transversais à aplicação: o filtro de autenticação JWT, a política de segurança HTTP, a configuração do \textit{broker} de mensagens WebSocket e o tratamento centralizado de exceções. Por concentrar essas preocupações em um único pacote (\texttt{config}), a camada evita que lógica de segurança e de infraestrutura se espalhe pelos demais componentes.
+
+A \textbf{camada de apresentação} expõe os \textit{endpoints} REST sob os prefixos \texttt{/auth}, \texttt{/sessions} e \texttt{/users}, além do \textit{handler} WebSocket responsável por receber o fluxo contínuo de dados biométricos. Toda a documentação interativa dos \textit{endpoints} é gerada automaticamente via SpringDoc OpenAPI, acessível pela interface Swagger integrada à aplicação.
+
+A \textbf{camada de serviço} concentra toda a lógica de negócio: autenticação e geração de tokens JWT, ciclo de vida das sessões de treino, cálculo da posição virtual do competidor automático denominado Horda, e gerenciamento do estado da sessão em \textit{cache}. Os serviços de acesso ao Redis foram deliberadamente separados dos demais serviços em um subpacote próprio (\texttt{service/redis}), evidenciando a distinção entre operações de persistência durável e operações de \textit{cache} em memória.
+
+A \textbf{camada de domínio} contém as entidades JPA mapeadas para o banco de dados relacional (\texttt{User}, \texttt{TrainSession}, \texttt{BiometricData}, \texttt{Horde}, \texttt{Ranking}, \texttt{Achievement} e \texttt{Friendship}), cada uma acompanhada de seu respectivo repositório Spring Data. O esquema relacional é versionado e aplicado de forma incremental pelo Flyway, garantindo rastreabilidade das migrações ao longo do desenvolvimento.
+
+\vspace{0.2cm}
+\noindent\textbf{Estratégia de persistência híbrida.}
+\vspace{0.2cm}
+
+Uma decisão arquitetural central deste trabalho é o uso combinado de dois mecanismos de persistência com papéis distintos: Redis para o estado volátil de alta frequência, e PostgreSQL para a persistência durável ao final de cada sessão.
+
+Durante a execução de uma sessão de treino, nenhuma operação de escrita é realizada no banco relacional. Cada atualização biométrica recebida pelo servidor aciona exclusivamente operações Redis, que completam em menos de 1 ms por chamada. O \textit{leaderboard} é mantido como um \textit{Sorted Set} (ZSET), estrutura de dados nativa do Redis que indexa os participantes pela distância acumulada e permite atualizar a posição de um usuário em tempo $O(\log N)$ via operação \texttt{ZADD}, bem como recuperar os primeiros colocados em $O(\log N + N)$ via \texttt{ZREVRANGE}. Paralelamente, o estado biométrico instantâneo de cada participante (frequência cardíaca, cadência, pace, calorias) é armazenado em um \textit{Hash} Redis por usuário, permitindo leituras e atualizações de campos individuais sem reescrever o objeto completo.
+
+Ao encerrar a sessão, o \texttt{TrainSessionService} lê o \textit{leaderboard} final do Redis, persiste os rankings individuais no PostgreSQL como registros da entidade \texttt{Ranking}, registra a distância total percorrida na entidade \texttt{TrainSession} e, por fim, reduz o TTL das chaves Redis para uma hora. Essa janela mantém os dados disponíveis para consultas imediatas pós-corrida sem ocupar memória de forma indefinida.
+
+Essa separação garante que o caminho crítico do processamento de cada mensagem biométrica recebida em tempo real nunca seja bloqueado por operações de I/O no banco relacional, mantendo a latência de ponta a ponta abaixo de 10 ms por mensagem.
+
+\vspace{0.2cm}
+\noindent\textbf{Segurança e autenticação.}
+\vspace{0.2cm}
+
+A aplicação adota autenticação \textit{stateless} baseada em JWT (\textit{JSON Web Token}). Ao realizar o login, o usuário recebe um token assinado com algoritmo HMAC-SHA, que deve ser enviado no cabeçalho \texttt{Authorization} de todas as requisições subsequentes. O \texttt{JwtAuthFilter}, implementado como \texttt{OncePerRequestFilter}, intercepta cada requisição HTTP, extrai e valida o token antes que ela chegue aos \textit{controllers}. As senhas dos usuários são armazenadas com \textit{hash} BCrypt, eliminando a exposição de credenciais em texto plano.
+
+O servidor não mantém estado de sessão HTTP, o que simplifica o escalonamento horizontal da aplicação, já que qualquer instância pode validar um token de forma independente sem necessidade de sessões compartilhadas.
+
+\vspace{0.2cm}
+\noindent\textbf{Infraestrutura e qualidade.}
+\vspace{0.2cm}
+
+Todo o ambiente da aplicação é orquestrado via Docker Compose, simplificando a reprodução do ambiente de desenvolvimento e de testes. Um \textit{pipeline} de integração contínua configurado no GitHub Actions executa automaticamente a suíte de testes a cada \textit{push}, gerando relatórios de cobertura por meio do \textit{plugin} JaCoCo. Os testes cobrem todas as camadas da aplicação utilizando o banco H2 em memória para isolamento dos testes de persistência relacional.
+
+\subsection{Protocolos de Comunicação}
+
+O protocolo WebSocket, combinado com o STOMP (\textit{Simple Text Oriented Messaging Protocol}) como camada de mensageria, viabiliza a comunicação bidirecional e assíncrona entre o aplicativo móvel e o servidor. Ao contrário do modelo HTTP tradicional, em que o cliente deve realizar requisições periódicas para verificar atualizações (\textit{polling}), o WebSocket mantém uma conexão persistente que permite ao servidor enviar dados ao cliente de forma proativa.
+
+O aplicativo mobile, desenvolvido em Kotlin Multiplatform com interface em Compose, conecta-se ao \textit{endpoint} \texttt{/ws} no momento em que o usuário inicia a sessão. A partir desse ponto, os dados biométricos e de movimento processados localmente são encaminhados ao destino STOMP \texttt{/app/train/data}, onde o backend os recebe, processa e persiste no Redis. Após cada atualização, o servidor transmite o \textit{leaderboard} recalculado para todos os clientes inscritos no tópico \texttt{/topic/session/\{sessionId\}/leaderboard}, possibilitando que todos os participantes visualizem o ranking atualizado simultaneamente e em tempo real.
+
+\subsection{Lógica da Gamificação}
+
+A Horda representa um adversário virtual que avança de forma autônoma durante a sessão de treino. Sua posição é calculada pelo \texttt{HordePositionService} com base no tempo decorrido desde o início da sessão e no \textit{pace}-alvo configurado, em minutos por quilômetro. Como o tempo de início da sessão é lido diretamente do Redis, o cálculo não exige consulta adicional ao banco relacional e permanece puramente aritmético. O modelo de domínio prevê ainda sub-hordas que herdam o \textit{pace} da Horda pai, permitindo criar variações de dificuldade sem duplicar configurações.

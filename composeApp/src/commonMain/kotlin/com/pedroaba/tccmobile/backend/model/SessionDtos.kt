@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 @Serializable
 data class StartSessionRequest(
     val hordeId: String? = null,
+    val distanceKm: Double? = null,
     val trainType: String = "RUN"
 )
 

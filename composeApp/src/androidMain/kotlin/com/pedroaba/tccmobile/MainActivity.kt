@@ -45,8 +45,8 @@ import com.pedroaba.tccmobile.features.auth.screens.LoginScreen
 import com.pedroaba.tccmobile.features.auth.screens.SignupScreen
 import com.pedroaba.tccmobile.features.game.screens.GameScreen
 import com.pedroaba.tccmobile.game.models.GameSnapshot
-import com.pedroaba.tccmobile.game.models.LocalHordeConfig
-import com.pedroaba.tccmobile.game.models.toSessionConfig
+import com.pedroaba.tccmobile.game.models.SessionConfig
+import com.pedroaba.tccmobile.game.telemetry.model.TelemetrySessionStatus
 import com.pedroaba.tccmobile.features.home.screens.HomeScreen
 import com.pedroaba.tccmobile.telemetry.service.AndroidTelemetryRuntime
 import com.pedroaba.tccmobile.telemetry.service.TelemetryForegroundService
@@ -76,7 +76,7 @@ class MainActivity : ComponentActivity() {
     private var showWatchModal by mutableStateOf(false)
     private var latestGameSnapshot by mutableStateOf(GameSnapshot())
     private var userProfileState by mutableStateOf(UserProfileState())
-    private var localHordeConfig by mutableStateOf(LocalHordeConfig())
+    private var selectedSessionDistanceKm by mutableStateOf(1.0)
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -232,6 +232,10 @@ class MainActivity : ComponentActivity() {
         onStartTelemetry: () -> Unit,
         onStopTelemetry: () -> Unit
     ) {
+        val navTelemetryState by telemetryStateFlow.collectAsStateWithLifecycle()
+        val shouldShowTabBar = currentTab != "game" ||
+            navTelemetryState.session.status != TelemetrySessionStatus.RUNNING
+
         Box(modifier = Modifier.fillMaxSize()) {
             when (currentTab) {
                 "home" -> {
@@ -252,10 +256,9 @@ class MainActivity : ComponentActivity() {
                             selectedHordeId = remoteSessionState.selectedHorde?.id,
                             hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                             hordeErrorMessage = remoteSessionState.errorMessage,
-                            localHordeConfig = localHordeConfig,
+                            selectedDistanceKm = selectedSessionDistanceKm,
+                            onDistanceSelected = { selectedSessionDistanceKm = it },
                             onHordeSelected = onlineSessionRepository::selectHorde,
-                            onUseManualHordeConfig = onlineSessionRepository::useManualHordeConfig,
-                            onLocalHordeConfigChanged = { localHordeConfig = it },
                             onReloadHordes = { loadHordesForSession(session) },
                             onStartRun = onStartTelemetry,
                             onViewProfile = { currentTab = "perfil" },
@@ -335,7 +338,8 @@ class MainActivity : ComponentActivity() {
                         remoteSessionState = remoteSessionState,
                         currentUserId = session.userId,
                         gameSessionConfig = remoteSessionState.selectedHorde?.toSessionConfig()
-                            ?: localHordeConfig.toSessionConfig(),
+                            ?.copy(goalDistance = selectedSessionDistanceKm * 1_000.0)
+                            ?: SessionConfig(goalDistance = selectedSessionDistanceKm * 1_000.0),
                         currentTimeMsProvider = { SystemClock.elapsedRealtime() },
                         onSnapshotChanged = { latestGameSnapshot = it },
                         onStartTelemetrySession = onStartTelemetry,
@@ -351,10 +355,9 @@ class MainActivity : ComponentActivity() {
                         selectedHordeId = remoteSessionState.selectedHorde?.id,
                         hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                         hordeErrorMessage = remoteSessionState.errorMessage,
-                        localHordeConfig = localHordeConfig,
+                        selectedDistanceKm = selectedSessionDistanceKm,
+                        onDistanceSelected = { selectedSessionDistanceKm = it },
                         onHordeSelected = onlineSessionRepository::selectHorde,
-                        onUseManualHordeConfig = onlineSessionRepository::useManualHordeConfig,
-                        onLocalHordeConfigChanged = { localHordeConfig = it },
                         onReloadHordes = { loadHordesForSession(session) },
                         onStartRun = onStartTelemetry,
                         onViewProfile = { currentTab = "perfil" },
@@ -364,14 +367,16 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            FloatingTabBar(
-                currentTab = currentTab,
-                onTabSelected = { tab ->
-                    currentTab = tab
-                    Log.d(TAG, "Tab selected: $tab")
-                },
-                modifier = Modifier.align(Alignment.BottomCenter)
-            )
+            if (shouldShowTabBar) {
+                FloatingTabBar(
+                    currentTab = currentTab,
+                    onTabSelected = { tab ->
+                        currentTab = tab
+                        Log.d(TAG, "Tab selected: $tab")
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter)
+                )
+            }
         }
     }
 
@@ -391,6 +396,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun ensurePermissionsAndStartTelemetry() {
+        if (onlineSessionRepository.state.value.selectedHorde == null) {
+            currentTab = "home"
+            loadAuthenticatedHordesIfPossible()
+            return
+        }
         currentTab = "game"
         pendingTelemetryStart = true
         continuePendingTelemetryStart()
@@ -477,6 +487,11 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private fun loadAuthenticatedHordesIfPossible() {
+        val session = (authManager.authState.value as? AuthState.Authenticated)?.session ?: return
+        loadHordesForSession(session)
+    }
+
     private fun loadUserProfile(session: UserSession) {
         if (session.userId.isBlank()) return
 
@@ -542,7 +557,11 @@ class MainActivity : ComponentActivity() {
         }
 
         lifecycleScope.launch {
-            val result = onlineSessionRepository.startSession(authenticatedSession.token, authenticatedSession.userId)
+            val result = onlineSessionRepository.startSession(
+                token = authenticatedSession.token,
+                currentUserId = authenticatedSession.userId,
+                distanceKm = selectedSessionDistanceKm
+            )
             if (result.isSuccess) {
                 pendingTelemetryStart = false
                 loadLeaderboardForSession(authenticatedSession)

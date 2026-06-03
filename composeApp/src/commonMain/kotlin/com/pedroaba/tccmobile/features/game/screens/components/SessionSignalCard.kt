@@ -18,8 +18,20 @@ import kotlin.math.roundToInt
 fun SessionSignalCard(
     telemetryState: TelemetryState,
     snapshot: GameSnapshot,
-    remoteSessionState: RemoteSessionState
+    remoteSessionState: RemoteSessionState,
+    preferRemoteState: Boolean = false
 ) {
+    val remoteGameState = remoteSessionState.gameState
+    val runnerVelocityLabel = remoteGameState
+        ?.playerSpeed
+        ?.let(::formatOneDecimal)
+        ?: if (preferRemoteState) "--" else formatOneDecimal(snapshot.runnerVelocity)
+    val hordeVelocityLabel = remoteGameState
+        ?.hordeSpeed
+        ?.let(::formatOneDecimal)
+        ?: if (preferRemoteState) "--" else formatOneDecimal(snapshot.hordeVelocity)
+    val elapsedLabel = if (preferRemoteState) "--" else "${snapshot.elapsedSeconds.roundToInt()}s"
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
@@ -30,9 +42,9 @@ fun SessionSignalCard(
             StatusRow("Remote Session", remoteSessionState.sessionId ?: "--")
             StatusRow("Telemetry Speed", telemetryState.latestSample?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
             StatusRow("Telemetry Distance", telemetryState.latestSample?.totalDistanceMeters?.roundToInt()?.toString() ?: "--")
-            StatusRow("Runner Vel.", formatOneDecimal(snapshot.runnerVelocity))
-            StatusRow("Horde Vel.", formatOneDecimal(snapshot.hordeVelocity))
-            StatusRow("Elapsed", "${snapshot.elapsedSeconds.roundToInt()}s")
+            StatusRow("Runner Vel.", runnerVelocityLabel)
+            StatusRow("Horde Vel.", hordeVelocityLabel)
+            StatusRow("Elapsed", elapsedLabel)
             remoteSessionState.leaderboard?.let {
                 StatusRow("Your Rank", "#${it.userRank}")
             }

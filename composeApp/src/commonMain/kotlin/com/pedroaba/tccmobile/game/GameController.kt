@@ -201,4 +201,25 @@ class GameController(
     fun updateEscapeMetrics(metrics: EscapeMetrics) {
         applyEscapeMetrics(metrics)
     }
+
+    fun recordEscapeMetrics(metrics: EscapeMetrics) {
+        _lastEscapeMetrics.value = metrics
+        lastTelemetryTimestampMs = metrics.timestampMs
+    }
+
+    fun applyAuthoritativeSnapshot(snapshot: GameSnapshot, isRunning: Boolean) {
+        _isActive.value = isRunning
+        _snapshot.value = snapshot
+
+        GameDebugLogger.log(
+            tag = "authoritative-snapshot",
+            "distance" to snapshot.distance,
+            "performance" to snapshot.performanceScore,
+            "risk" to snapshot.risk,
+            "pressure" to snapshot.hordePressure,
+            "runnerVelocity" to snapshot.runnerVelocity,
+            "hordeVelocity" to snapshot.hordeVelocity,
+            "result" to snapshot.result
+        )
+    }
 }

@@ -41,10 +41,6 @@ class OnlineSessionRepository(
         _state.value = _state.value.onHordeSelected(hordeId)
     }
 
-    fun useManualHordeConfig() {
-        _state.value = _state.value.onManualHordeConfigured()
-    }
-
     suspend fun refreshLeaderboard(token: String, currentUserId: String): Result<Unit> {
         val sessionId = _state.value.sessionId
             ?: return Result.failure(IllegalStateException("Nenhuma sessao online em andamento."))
@@ -62,7 +58,11 @@ class OnlineSessionRepository(
         )
     }
 
-    suspend fun startSession(token: String, currentUserId: String): Result<String> {
+    suspend fun startSession(
+        token: String,
+        currentUserId: String,
+        distanceKm: Double
+    ): Result<String> {
         val currentState = _state.value
         if (currentState.sessionId != null && currentState.status != RemoteSessionStatus.IDLE) {
             when (currentState.status) {
@@ -77,13 +77,24 @@ class OnlineSessionRepository(
         }
 
         val selectedHorde = _state.value.selectedHorde
+        if (selectedHorde == null) {
+            val error = IllegalStateException("Selecione uma horda do backend antes de iniciar a sessao.")
+            _state.value = _state.value.onSessionStartFailed(error.message ?: "Selecione uma horda do backend.")
+            return Result.failure(error)
+        }
 
         _state.value = _state.value.copy(
             status = RemoteSessionStatus.STARTING,
             errorMessage = null
         )
 
-        return sessionApi.startSession(token, StartSessionRequest(hordeId = selectedHorde?.id)).fold(
+        return sessionApi.startSession(
+            token,
+            StartSessionRequest(
+                hordeId = selectedHorde.id,
+                distanceKm = distanceKm
+            )
+        ).fold(
             onSuccess = { response ->
                 val connectionResult = CompletableDeferred<Result<String>>()
                 _state.value = _state.value.onSessionStarted(response.sessionId)

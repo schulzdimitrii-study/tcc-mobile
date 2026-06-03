@@ -58,6 +58,7 @@ fun GameScreen(
     remoteSessionState: RemoteSessionState = RemoteSessionState(),
     currentUserId: String = "",
     gameSessionConfig: SessionConfig = defaultGameSessionConfig,
+    shouldAutoStartSession: Boolean = false,
     currentTimeMsProvider: () -> Long = { 0L },
     onSnapshotChanged: (GameSnapshot) -> Unit = {},
     onStartTelemetrySession: (() -> Unit)? = null,
@@ -90,6 +91,12 @@ fun GameScreen(
 
         LaunchedEffect(snapshot) {
             onSnapshotChanged(snapshot)
+        }
+
+        LaunchedEffect(isSceneLoading, shouldAutoStartSession) {
+            if (shouldAutoStartSession && !isSceneLoading) {
+                onStartTelemetrySession?.invoke()
+            }
         }
 
         LaunchedEffect(telemetryState.latestEscapeMetrics) {

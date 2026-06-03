@@ -343,9 +343,10 @@ class MainActivity : ComponentActivity() {
                         gameSessionConfig = remoteSessionState.selectedHorde?.toSessionConfig()
                             ?.copy(goalDistance = selectedSessionDistanceKm * 1_000.0)
                             ?: SessionConfig(goalDistance = selectedSessionDistanceKm * 1_000.0),
+                        shouldAutoStartSession = pendingTelemetryStart,
                         currentTimeMsProvider = { SystemClock.elapsedRealtime() },
                         onSnapshotChanged = { latestGameSnapshot = it },
-                        onStartTelemetrySession = onStartTelemetry,
+                        onStartTelemetrySession = ::startTelemetryAfterSceneLoaded,
                         onStopTelemetrySession = onStopTelemetry
                     )
                 }
@@ -406,6 +407,12 @@ class MainActivity : ComponentActivity() {
         }
         currentTab = "game"
         pendingTelemetryStart = true
+    }
+
+    private fun startTelemetryAfterSceneLoaded() {
+        if (!pendingTelemetryStart) {
+            pendingTelemetryStart = true
+        }
         continuePendingTelemetryStart()
     }
 

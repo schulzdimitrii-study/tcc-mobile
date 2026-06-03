@@ -51,6 +51,7 @@ import com.pedroaba.tccmobile.features.home.screens.HomeScreen
 import com.pedroaba.tccmobile.telemetry.service.AndroidTelemetryRuntime
 import com.pedroaba.tccmobile.telemetry.service.TelemetryForegroundService
 import com.pedroaba.tccmobile.telemetry.service.TelemetryRuntimeProvider
+import com.pedroaba.tccmobile.telemetry.wear.WatchGameProgressBridge
 import com.pedroaba.tccmobile.ui.components.navigation.FloatingTabBar
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
@@ -66,6 +67,7 @@ class MainActivity : ComponentActivity() {
     private lateinit var onlineSessionRepository: OnlineSessionRepository
     private lateinit var backendHttpClient: BackendHttpClient
     private lateinit var userApi: UserApi
+    private lateinit var watchGameProgressBridge: WatchGameProgressBridge
     
     private var hasLocationPermission by mutableStateOf(false)
     private var hasNotificationPermission by mutableStateOf(false)
@@ -108,6 +110,7 @@ class MainActivity : ComponentActivity() {
 
         authManager = AuthManager(this)
         telemetryRuntime = TelemetryRuntimeProvider.get(this)
+        watchGameProgressBridge = WatchGameProgressBridge(this)
         backendHttpClient = BackendHttpClient()
         userApi = UserApi(backendHttpClient)
         onlineSessionRepository = OnlineSessionRepository(
@@ -633,6 +636,13 @@ class MainActivity : ComponentActivity() {
                     userId = session.userId,
                     telemetryState = telemetryState,
                     snapshot = latestGameSnapshot
+                )
+                watchGameProgressBridge.publish(
+                    telemetryState = telemetryState,
+                    snapshot = latestGameSnapshot,
+                    sessionConfig = onlineSessionRepository.state.value.selectedHorde?.toSessionConfig()
+                        ?.copy(goalDistance = selectedSessionDistanceKm * 1_000.0)
+                        ?: SessionConfig(goalDistance = selectedSessionDistanceKm * 1_000.0)
                 )
             }
         }

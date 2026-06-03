@@ -11,7 +11,7 @@
 
 \subsection{Aplicativo Mobile}
 
-O aplicativo mobile foi desenvolvido com Kotlin Multiplatform e Compose Multiplatform, adotando uma base compartilhada para interface, modelos de domínio e lógica de jogo, enquanto as integrações dependentes de plataforma ficam isoladas em implementações específicas do Android e do iOS. A aplicação funciona como o ponto de contato do usuário com a sessão gamificada: ela realiza autenticação, permite selecionar ou configurar a Horda, coleta sinais de movimento do dispositivo, atualiza a simulação local do jogo e envia dados ao backend em tempo real.
+O aplicativo mobile foi desenvolvido com Kotlin Multiplatform e Compose Multiplatform, adotando uma base compartilhada para interface, modelos de domínio e lógica de jogo, enquanto as integrações dependentes de plataforma ficam isoladas em implementações específicas do Android e do iOS. A aplicação funciona como o ponto de contato do usuário com a sessão gamificada: ela realiza autenticação, permite selecionar a Horda disponibilizada pelo backend, coleta sinais de movimento e biofeedback do dispositivo, exibe o estado remoto da sessão e envia dados ao backend em tempo real.
 
 A interface do aplicativo é construída com Compose Multiplatform e organizada por funcionalidades. As telas de autenticação permitem login e cadastro de usuários; a tela inicial apresenta as opções de Horda e o início da corrida; a tela de jogo exibe a cena gamificada, o estado da sessão, os sinais de telemetria e os indicadores de desempenho; a tela de ranking apresenta a classificação em tempo real; e as telas de perfil permitem visualizar e editar dados do usuário, além de acompanhar permissões relacionadas à telemetria.
 
@@ -19,7 +19,7 @@ A interface do aplicativo é construída com Compose Multiplatform e organizada 
 \noindent\textbf{Pipeline de telemetria.}
 \vspace{0.2cm}
 
-O pipeline de telemetria é uma das partes centrais do aplicativo. No Android, a entrada dos sinais ocorre por meio do \texttt{FusedLocationTrackingService}, que obtém localização via Play Services Location, e do \texttt{AndroidMotionSensorService}, que lê amostras de aceleração do dispositivo. A arquitetura também define o contrato \texttt{WearTelemetryBridge} para integração com smartwatch, embora a implementação atual utilize \texttt{NoOpWearTelemetryBridge}, indicando que a ponte com wearable ainda não foi implementada de fato.
+O pipeline de telemetria é uma das partes centrais do aplicativo. No Android, a entrada dos sinais ocorre por meio do \texttt{FusedLocationTrackingService}, que obtém localização via Play Services Location, do \texttt{AndroidMotionSensorService}, que lê amostras de aceleração do dispositivo, e do \texttt{AndroidWearTelemetryBridge}, que recebe mensagens do smartwatch via Wear OS. As mensagens enviadas no caminho \texttt{/telemetry} são processadas pelo \texttt{WearTelemetryMessageParser} e convertidas em amostras de biofeedback com frequência cardíaca, permitindo que o estado de telemetria incorpore dados reais do wearable.
 
 Essas fontes são centralizadas pelo \texttt{DefaultTelemetryRepository}, que expõe um \texttt{StateFlow<TelemetryState>} para o restante da aplicação. O repositório controla o ciclo de vida da sessão de movimento, monitora disponibilidade de sensores e permissões, agrega localização, aceleração e possíveis sinais biométricos, e publica o estado atualizado da telemetria.
 

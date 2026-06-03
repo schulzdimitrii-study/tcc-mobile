@@ -20,6 +20,7 @@ ktor = "3.1.0"
 material3 = "1.10.0-alpha05"
 korge = "5.4.0"
 play-services-location = "21.0.1"
+play-services-wearable = "19.0.0"
 
 [libraries]
 korge = { module = "com.soywiz.korge:korge", version.ref = "korge" }
@@ -50,6 +51,7 @@ ktor-serialization-kotlinx-json = { module = "io.ktor:ktor-serialization-kotlinx
 ktor-client-logging = { module = "io.ktor:ktor-client-logging", version.ref = "ktor" }
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlin-serialization" }
 play-services-location = { module = "com.google.android.gms:play-services-location", version.ref = "play-services-location" }
+play-services-wearable = { module = "com.google.android.gms:play-services-wearable", version.ref = "play-services-wearable" }
 
 [plugins]
 androidApplication = { id = "com.android.application", version.ref = "agp" }

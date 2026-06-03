@@ -127,7 +127,7 @@ No Android, os sinais entram por:
 - `WearTelemetryBridge`
   - ponte para sinais de wearable.
 
-Hoje, o runtime usa `NoOpWearTelemetryBridge`, entao a integracao com relogio esta preparada na arquitetura, mas nao implementada de fato.
+Hoje, o Android usa `AndroidWearTelemetryBridge` para receber mensagens Wear OS no path `/telemetry` e converter batimentos em `BiofeedbackSample`. `NoOpWearTelemetryBridge` permanece apenas como implementacao neutra disponivel para cenarios sem ponte real.
 
 #### 4.2 Runtime e repositorio
 
@@ -292,9 +292,9 @@ Ele concentra:
 
 Se existir divergencia entre Android e iOS, assuma que o comportamento de referencia hoje esta no Android.
 
-### A ponte de wearable ainda nao existe
+### A ponte de wearable existe no Android
 
-Existe interface para wearable, mas o runtime usa `NoOpWearTelemetryBridge`. Se alguem for implementar isso, o ponto de entrada correto e esse contrato, nao um atalho em `App.kt`.
+O runtime Android usa `AndroidWearTelemetryBridge`. Se alguem for evoluir a integracao com relogio, o ponto de entrada correto continua sendo `WearTelemetryBridge` e os componentes em `telemetry/wear`, nao um atalho em `App.kt`.
 
 ### O jogo depende de metricas, nao de sensores brutos
 

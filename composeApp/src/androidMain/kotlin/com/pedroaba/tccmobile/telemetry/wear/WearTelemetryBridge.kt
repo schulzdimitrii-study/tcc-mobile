@@ -7,4 +7,6 @@ import kotlinx.coroutines.flow.StateFlow
 interface WearTelemetryBridge {
     val isWatchConnected: StateFlow<Boolean>
     val biofeedbackSamples: Flow<BiofeedbackSample>
+
+    fun close() = Unit
 }

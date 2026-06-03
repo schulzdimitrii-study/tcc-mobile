@@ -153,6 +153,7 @@ class DefaultTelemetryRepository(
 
     override fun dispose() {
         cancelCollectionJobs()
+        wearTelemetryBridge.close()
         scope.cancel()
     }
 

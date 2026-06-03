@@ -6,7 +6,7 @@ import com.pedroaba.tccmobile.telemetry.data.DefaultTelemetryRepository
 import com.pedroaba.tccmobile.telemetry.data.TelemetryRepository
 import com.pedroaba.tccmobile.telemetry.location.FusedLocationTrackingService
 import com.pedroaba.tccmobile.telemetry.motion.AndroidMotionSensorService
-import com.pedroaba.tccmobile.telemetry.wear.NoOpWearTelemetryBridge
+import com.pedroaba.tccmobile.telemetry.wear.AndroidWearTelemetryBridge
 
 class AndroidTelemetryRuntime private constructor(
     val repository: TelemetryRepository,
@@ -22,7 +22,7 @@ class AndroidTelemetryRuntime private constructor(
                     fusedLocationProviderClient = LocationServices.getFusedLocationProviderClient(appContext)
                 ),
                 motionSensorService = AndroidMotionSensorService(appContext),
-                wearTelemetryBridge = NoOpWearTelemetryBridge()
+                wearTelemetryBridge = AndroidWearTelemetryBridge(appContext)
             )
 
             return AndroidTelemetryRuntime(

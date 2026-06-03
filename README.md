@@ -112,8 +112,8 @@ Entradas:
 
 - `FusedLocationTrackingService`: localização via Play Services Location;
 - `AndroidMotionSensorService`: aceleração do dispositivo;
-- `WearTelemetryBridge`: contrato para wearable;
-- `NoOpWearTelemetryBridge`: implementação atual sem smartwatch real.
+- `AndroidWearTelemetryBridge`: ponte Android com Wear OS para receber batimentos do smartwatch;
+- `WearTelemetryListenerService`: listener de mensagens Wear no path `/telemetry`.
 
 Processamento compartilhado:
 

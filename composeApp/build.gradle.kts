@@ -31,6 +31,7 @@ kotlin {
             implementation(libs.compose.uiToolingPreview)
             implementation(libs.androidx.activity.compose)
             implementation(libs.play.services.location)
+            implementation(libs.play.services.wearable)
             implementation(libs.androidx.dataStore.preferences)
             implementation(libs.ktor.client.core)
             implementation(libs.ktor.client.okhttp)

@@ -10,27 +10,23 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
-import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlin.math.roundToInt
 
 @Composable
 fun SessionSignalCard(
     telemetryState: TelemetryState,
-    snapshot: GameSnapshot,
-    remoteSessionState: RemoteSessionState,
-    preferRemoteState: Boolean = false
+    remoteSessionState: RemoteSessionState
 ) {
     val remoteGameState = remoteSessionState.gameState
     val runnerVelocityLabel = remoteGameState
         ?.playerSpeed
         ?.let(::formatOneDecimal)
-        ?: if (preferRemoteState) "--" else formatOneDecimal(snapshot.runnerVelocity)
+        ?: "--"
     val hordeVelocityLabel = remoteGameState
         ?.hordeSpeed
         ?.let(::formatOneDecimal)
-        ?: if (preferRemoteState) "--" else formatOneDecimal(snapshot.hordeVelocity)
-    val elapsedLabel = if (preferRemoteState) "--" else "${snapshot.elapsedSeconds.roundToInt()}s"
+        ?: "--"
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -40,11 +36,11 @@ fun SessionSignalCard(
             StatusRow("Session", telemetryState.session.status.name)
             StatusRow("Online Sync", remoteSessionState.status.name)
             StatusRow("Remote Session", remoteSessionState.sessionId ?: "--")
-            StatusRow("Telemetry Speed", telemetryState.latestSample?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
-            StatusRow("Telemetry Distance", telemetryState.latestSample?.totalDistanceMeters?.roundToInt()?.toString() ?: "--")
+            StatusRow("Provider Speed", telemetryState.latestLocationPoint?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
+            StatusRow("Raw Acceleration", telemetryState.latestAccelerationSample?.magnitudeMetersPerSecondSquared?.let(::formatOneDecimal) ?: "--")
             StatusRow("Runner Vel.", runnerVelocityLabel)
             StatusRow("Horde Vel.", hordeVelocityLabel)
-            StatusRow("Elapsed", elapsedLabel)
+            StatusRow("Remote Status", remoteGameState?.gameStatus?.name ?: "--")
             remoteSessionState.leaderboard?.let {
                 StatusRow("Your Rank", "#${it.userRank}")
             }

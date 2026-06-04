@@ -10,9 +10,9 @@ data class TelemetryAvailability(
 
 data class TelemetryState(
     val session: MovementSession = MovementSession(),
-    val latestSample: TelemetrySample? = null,
+    val latestLocationPoint: LocationPoint? = null,
+    val latestAccelerationSample: AccelerationSample? = null,
     val latestBiofeedbackSample: BiofeedbackSample? = null,
-    val latestEscapeMetrics: EscapeMetrics? = null,
     val strategy: TelemetryStrategy = TelemetryStrategy.MOVEMENT_ONLY,
     val availability: TelemetryAvailability = TelemetryAvailability()
 )

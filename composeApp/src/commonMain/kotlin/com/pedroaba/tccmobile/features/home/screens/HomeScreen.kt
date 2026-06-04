@@ -46,8 +46,6 @@ fun HomeScreen(
     selectedHordeId: String? = null,
     hordeCatalogStatus: HordeCatalogStatus = HordeCatalogStatus.IDLE,
     hordeErrorMessage: String? = null,
-    selectedDistanceKm: Double = 1.0,
-    onDistanceSelected: (Double) -> Unit = {},
     onHordeSelected: (String) -> Unit = {},
     onReloadHordes: () -> Unit = {},
     onStartRun: () -> Unit = {},
@@ -81,8 +79,8 @@ fun HomeScreen(
             eyebrow = if (canStartHorde) "HORDA PRONTA" else "SELECIONE UMA HORDA",
             title = selectedHorde?.name ?: "Escolha uma horda do backend.",
             body = selectedHorde?.let {
-                "${it.displayDifficulty()} · ${it.displayPace()} · ${selectedDistanceKm.formatDistanceLabel()}"
-            } ?: "Escolha uma horda carregada do backend e a distância da sessão.",
+                "${it.displayDifficulty()} · ${it.displayPace()}"
+            } ?: "Escolha uma horda carregada do backend.",
             primaryAction = when {
                 isLoadingHordes -> "Carregando"
                 canStartHorde -> "Comecar horda"
@@ -94,20 +92,6 @@ fun HomeScreen(
             secondaryAction = "Ver perfil",
             onSecondaryAction = onViewProfile,
             footer = {
-                PanelDivider()
-                AppSelect(
-                    options = SessionDistanceOption.entries.map { option ->
-                        AppSelectOption(
-                            label = option.label,
-                            value = option.km.toString()
-                        )
-                    },
-                    value = selectedDistanceKm.toString(),
-                    onValueChange = { value ->
-                        value.toDoubleOrNull()?.let(onDistanceSelected)
-                    },
-                    placeholder = "Distância"
-                )
                 PanelDivider()
                 if (hordes.isNotEmpty()) {
                     AppSelect(
@@ -279,19 +263,4 @@ private fun RankingPreviewRow(
 private fun formatKm(value: Double): String {
     val rounded = round(value * 100.0) / 100.0
     return "$rounded km"
-}
-
-private enum class SessionDistanceOption(val km: Double, val label: String) {
-    ONE(1.0, "1 km"),
-    THREE(3.0, "3 km"),
-    FIVE(5.0, "5 km")
-}
-
-private fun Double.formatDistanceLabel(): String {
-    val rounded = round(this * 100.0) / 100.0
-    return if (rounded % 1.0 == 0.0) {
-        "${rounded.toInt()} km"
-    } else {
-        "$rounded km"
-    }
 }

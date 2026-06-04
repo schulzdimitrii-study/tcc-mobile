@@ -1,7 +1,6 @@
 package com.pedroaba.tccmobile.backend.online
 
 import com.pedroaba.tccmobile.backend.model.StartSessionRequest
-import com.pedroaba.tccmobile.game.models.GameSnapshot
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.TimeoutCancellationException
@@ -60,8 +59,7 @@ class OnlineSessionRepository(
 
     suspend fun startSession(
         token: String,
-        currentUserId: String,
-        distanceKm: Double
+        currentUserId: String
     ): Result<String> {
         val currentState = _state.value
         if (currentState.sessionId != null && currentState.status != RemoteSessionStatus.IDLE) {
@@ -91,8 +89,7 @@ class OnlineSessionRepository(
         return sessionApi.startSession(
             token,
             StartSessionRequest(
-                hordeId = selectedHorde.id,
-                distanceKm = distanceKm
+                hordeId = selectedHorde.id
             )
         ).fold(
             onSuccess = { response ->
@@ -164,8 +161,7 @@ class OnlineSessionRepository(
 
     fun sendTelemetry(
         userId: String,
-        telemetryState: TelemetryState,
-        snapshot: GameSnapshot
+        telemetryState: TelemetryState
     ): Boolean {
         val sessionId = _state.value.sessionId ?: return false
         if (!stompWebSocketClient.isConnected()) return false
@@ -177,7 +173,6 @@ class OnlineSessionRepository(
             sessionId = sessionId,
             userId = userId,
             telemetryState = telemetryState,
-            snapshot = snapshot,
             timestampMs = now
         ) ?: return false
 
@@ -196,5 +191,11 @@ class OnlineSessionRepository(
         stompWebSocketClient.disconnect()
         lastTelemetrySentAtMs = 0L
         _state.value = _state.value.onSessionEnded()
+    }
+
+    fun failActiveSession(message: String) {
+        stompWebSocketClient.disconnect()
+        lastTelemetrySentAtMs = 0L
+        _state.value = _state.value.onRealtimeFailure(message)
     }
 }

@@ -8,6 +8,7 @@ import com.pedroaba.tccmobile.backend.online.HordeCatalogStatus
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
 import com.pedroaba.tccmobile.ui.components.AppScreenScaffold
+import com.pedroaba.tccmobile.ui.components.AppCallout
 import com.pedroaba.tccmobile.ui.components.AppSecondary
 import com.pedroaba.tccmobile.ui.components.FeatureCard
 import com.pedroaba.tccmobile.ui.components.MetricCard
@@ -25,6 +26,7 @@ fun HomeScreenWithModal(
     userName: String = "Você",
     currentUserId: String = "",
     remoteSessionState: RemoteSessionState = RemoteSessionState(),
+    connectionErrorMessage: String? = null,
     onDismissModal: () -> Unit = {},
     onTabSelected: (String) -> Unit = {}
 ) {
@@ -59,7 +61,7 @@ fun HomeScreenWithModal(
             status = if (isSessionActive) "SESSÃO ATIVA" else "WEARABLE NÃO INTEGRADO",
             statusTone = if (isSessionActive) StatusPillTone.Success else StatusPillTone.Neutral,
             title = "Telemetria disponível",
-            body = "O app envia localização, velocidade, cadência estimada e distância ao backend. BPM depende da ponte de wearable nativa.",
+            body = "O app mantém a sessão online e encerra o jogo se a conexão cair.",
             primaryAction = "Voltar",
             onPrimaryAction = onDismissModal,
             secondaryAction = if (isSessionActive) "Ver sessão" else "Entendi",
@@ -87,6 +89,10 @@ fun HomeScreenWithModal(
                 }
             }
         )
+
+        connectionErrorMessage?.let {
+            AppCallout(text = it)
+        }
 
         ListPanel(title = "Leaderboard da sessão", actionLabel = if (leaderboard == null) "sem dados" else "tempo real") {
             if (leaderboard == null || leaderboard.entries.isEmpty()) {

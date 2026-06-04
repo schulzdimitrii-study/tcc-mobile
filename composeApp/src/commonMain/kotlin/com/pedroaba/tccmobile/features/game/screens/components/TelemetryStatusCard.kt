@@ -19,7 +19,6 @@ import kotlin.math.roundToInt
 @Composable
 fun TelemetryStatusCard(
     telemetryState: TelemetryState,
-    lastEscapeMetricsLabel: String,
     remoteSessionState: RemoteSessionState
 ) {
     Card(
@@ -34,19 +33,19 @@ fun TelemetryStatusCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
 
-            val sample = telemetryState.latestSample
-            val metrics = telemetryState.latestEscapeMetrics
+            val location = telemetryState.latestLocationPoint
+            val acceleration = telemetryState.latestAccelerationSample
+            val gameState = remoteSessionState.gameState
 
-            StatusRow("Distance", sample?.totalDistanceMeters?.roundToInt()?.let { "${it}m" } ?: "--")
-            StatusRow("Speed", sample?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
-            StatusRow("Acceleration", sample?.effectiveAccelerationMetersPerSecondSquared?.let(::formatOneDecimal) ?: "--")
-            StatusRow("Confidence", sample?.movementConfidence?.let { "${(it * 100).roundToInt()}%" } ?: "--")
-            StatusRow("Escape Score", lastEscapeMetricsLabel)
-            StatusRow("Normalized Speed", metrics?.normalizedSpeed?.let { "${(it * 100).roundToInt()}%" } ?: "--")
-            StatusRow("Normalized Distance", metrics?.normalizedDistance?.let { "${(it * 100).roundToInt()}%" } ?: "--")
+            StatusRow("Raw GPS", location?.provider ?: "--")
+            StatusRow("GPS Accuracy", location?.accuracyMeters?.let { "${formatOneDecimal(it)} m" } ?: "--")
+            StatusRow("Provider Speed", location?.speedMetersPerSecond?.let(::formatOneDecimal) ?: "--")
+            StatusRow("Raw Acceleration", acceleration?.magnitudeMetersPerSecondSquared?.let(::formatOneDecimal) ?: "--")
+            StatusRow("Backend Distance", gameState?.playerPosition?.let { "${formatOneDecimal(it)} km" } ?: "--")
+            StatusRow("Backend Speed", gameState?.playerSpeed?.let(::formatOneDecimal) ?: "--")
             StatusRow(
                 "Horde Distance",
-                remoteSessionState.leaderboard?.hordeVirtualDistanceKm?.let { "${formatOneDecimal(it)} km" } ?: "--"
+                gameState?.hordePosition?.let { "${formatOneDecimal(it)} km" } ?: "--"
             )
 
             val issuesLabel = telemetryState.availability.issues

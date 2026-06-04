@@ -11,12 +11,14 @@
 
 \subsection{Aplicativo Mobile}
 
-O aplicativo mobile foi desenvolvido com Kotlin Multiplatform e Compose Multiplatform, adotando uma base compartilhada para interface, modelos de domínio e lógica de jogo, enquanto as integrações dependentes de plataforma ficam isoladas em implementações específicas do Android e do iOS. A aplicação funciona como o ponto de contato do usuário com a sessão gamificada: ela realiza autenticação, permite selecionar a Horda disponibilizada pelo backend, coleta sinais de movimento e biofeedback do dispositivo, exibe o estado remoto da sessão e envia dados ao backend em tempo real.
+O aplicativo mobile foi desenvolvido com Kotlin Multiplatform e Compose Multiplatform, adotando uma base compartilhada para interface, modelos de domínio, lógica de jogo e processamento de telemetria. As integrações dependentes de plataforma permanecem isoladas em implementações específicas, principalmente no Android, que concentra a coleta real de sensores, permissões, execução em primeiro plano e comunicação com recursos nativos. O iOS é mantido como um invólucro multiplataforma funcional, mas ainda sem paridade completa com o fluxo Android de telemetria e renderização KorGE.
+
+A aplicação funciona como o ponto de contato do usuário com a sessão gamificada. Ela realiza autenticação, carrega as Hordas disponibilizadas pelo backend, permite configurar a distância da corrida, coleta sinais de movimento e biofeedback, atualiza a simulação local do jogo, acompanha o estado remoto da sessão e envia dados ao backend em tempo real.
 
 A interface do aplicativo é construída com Compose Multiplatform e organizada por funcionalidades. As telas de autenticação permitem login e cadastro de usuários; a tela inicial apresenta as opções de Horda e o início da corrida; a tela de jogo exibe a cena gamificada, o estado da sessão, os sinais de telemetria e os indicadores de desempenho; a tela de ranking apresenta a classificação em tempo real; e as telas de perfil permitem visualizar e editar dados do usuário, além de acompanhar permissões relacionadas à telemetria.
 
 \vspace{0.2cm}
-\noindent\textbf{Pipeline de telemetria.}
+\subsubsection{Pipeline de telemetria}
 \vspace{0.2cm}
 
 O pipeline de telemetria é uma das partes centrais do aplicativo. No Android, a entrada dos sinais ocorre por meio do \texttt{FusedLocationTrackingService}, que obtém localização via Play Services Location, do \texttt{AndroidMotionSensorService}, que lê amostras de aceleração do dispositivo, e do \texttt{AndroidWearTelemetryBridge}, que recebe mensagens do smartwatch via Wear OS. As mensagens enviadas no caminho \texttt{/telemetry} são processadas pelo \texttt{WearTelemetryMessageParser} e convertidas em amostras de biofeedback com frequência cardíaca, permitindo que o estado de telemetria incorpore dados reais do wearable.
@@ -26,27 +28,27 @@ Essas fontes são centralizadas pelo \texttt{DefaultTelemetryRepository}, que ex
 O processamento dos sinais é mantido no código compartilhado sempre que possível. O \texttt{MovementTelemetryProcessor} suaviza velocidade e aceleração, calcula distância percorrida, filtra ruídos e detecta dados obsoletos. O \texttt{SelectTelemetryStrategyUseCase} escolhe a estratégia de processamento, alternando entre uso exclusivo de movimento e uso combinado de movimento com BPM quando houver biofeedback disponível. Por fim, o \texttt{ComputeEscapeMetricsUseCase} transforma a amostra processada em métricas normalizadas, como pontuação de movimento, ritmo, pressão e risco, que podem ser interpretadas pela lógica do jogo.
 
 \vspace{0.2cm}
-\noindent\textbf{Lógica de jogo e gamificação.}
+\subsubsection{Lógica de jogo e gamificação}
 \vspace{0.2cm}
 
 A gamificação foi modelada como uma simulação de corrida e fuga. O usuário representa o corredor, enquanto a Horda atua como adversário virtual que pressiona o jogador ao longo da sessão. O domínio do jogo não acessa diretamente sensores Android; ele recebe apenas métricas abstratas, preservando a separação entre coleta nativa e regras de gameplay.
 
-O \texttt{GameController} concentra o estado da sessão e expõe o \texttt{GameSnapshot}, estrutura que representa distância percorrida, velocidade do corredor, velocidade da Horda, pressão, risco, pontuação de desempenho, tempo decorrido e resultado da sessão. Os cálculos principais ficam no \texttt{RunCalculator}, que converte as métricas recebidas em evolução da corrida e determina se o usuário continua correndo, escapou ou foi alcançado pela Horda.
+No aplicativo, o \texttt{GameController} concentra apenas o estado necessário para a interface e para a renderização local da cena, expondo um \texttt{GameSnapshot} com distância, velocidade, pressão, risco, pontuação, tempo decorrido e resultado exibidos ao usuário. Esse snapshot pode ser calculado localmente pelo \texttt{RunCalculator} em cenários de simulação, pré-visualização ou indisponibilidade da conexão. Entretanto, em uma sessão online, os cálculos autoritativos da corrida ficam no backend: a posição da Horda, o estado oficial do jogo, o ranking e o resultado da sessão são recebidos pelo aplicativo por WebSocket e aplicados na tela de jogo. Assim, o mobile atua principalmente como coletor de telemetria e cliente de visualização, enquanto o servidor permanece como fonte de verdade da sessão.
 
-A visualização do jogo é renderizada com KorGE. A cena principal, definida em \texttt{MainScene}, monta o fundo com parallax, o corredor e as unidades da Horda. A cada atualização, a cena lê o \texttt{GameSnapshot} produzido pelo controlador e ajusta os elementos visuais de acordo com o estado lógico da sessão. Dessa forma, a camada visual reflete o domínio do jogo, sem criar uma fonte paralela de verdade para a simulação.
+A visualização do jogo é renderizada com KorGE no Android. A cena principal, definida em \texttt{MainScene}, monta o fundo com parallax, o corredor e as unidades da Horda. A cada atualização, a cena lê o \texttt{GameSnapshot} mantido pelo controlador, que pode refletir o estado remoto recebido do backend, e ajusta os elementos visuais de acordo com o estado lógico da sessão. Dessa forma, a camada visual apenas representa o estado da corrida, sem criar uma fonte paralela de verdade para a simulação.
 
 \vspace{0.2cm}
-\noindent\textbf{Integração em tempo real com o backend.}
+\subsubsection{Integração em tempo real com o backend}
 \vspace{0.2cm}
 
 A comunicação com o backend combina chamadas REST e WebSocket com STOMP. As chamadas REST são usadas para autenticação, cadastro, carregamento de Hordas, criação de sessão, consulta do leaderboard e encerramento da sessão. Após a autenticação, o token JWT retornado pelo backend é persistido localmente com Android DataStore e enviado nas requisições protegidas.
 
 Ao iniciar uma corrida, o aplicativo solicita ao backend a criação de uma sessão por meio do endpoint \texttt{/sessions/start}. Em seguida, o cliente \texttt{StompWebSocketClient} abre conexão no endpoint \texttt{/ws}, assina os tópicos \texttt{/topic/session/\{sessionId\}/leaderboard} e \texttt{/topic/session/\{sessionId\}/game-state}, e passa a receber atualizações de ranking e estado remoto do jogo.
 
-Durante a sessão, o \texttt{OnlineSessionRepository} combina o estado de telemetria local com o \texttt{GameSnapshot} mais recente e envia mensagens biométricas para o destino STOMP \texttt{/app/train/data}. O envio é limitado a uma atualização por segundo, reduzindo tráfego desnecessário e mantendo frequência suficiente para atualização do ranking em tempo real. Ao finalizar a corrida, o aplicativo encerra a coleta local, desconecta o WebSocket e solicita ao backend o fechamento da sessão pelo endpoint \texttt{/sessions/\{sessionId\}/finish}.
+Durante a sessão, o \texttt{OnlineSessionRepository} combina o estado de telemetria local com o \texttt{GameSnapshot} mais recente e envia mensagens biométricas para o destino STOMP \texttt{/app/train/data}. O envio é limitado a uma atualização por segundo, reduzindo tráfego desnecessário e mantendo frequência suficiente para atualização do ranking em tempo real. Ao finalizar a corrida, o aplicativo encerra a coleta local, desconecta o WebSocket e solicita ao backend o fechamento da sessão pelo endpoint \texttt{/sessions/\{sessionId\}/finish}. Em paralelo, o \texttt{WatchGameProgressBridge} publica o progresso do jogo para o smartwatch quando houver integração disponível.
 
 \vspace{0.2cm}
-\noindent\textbf{Permissões e execução em primeiro plano.}
+\subsubsection{Permissões e execução em primeiro plano}
 \vspace{0.2cm}
 
 Como a sessão depende de sinais físicos do dispositivo, a versão Android verifica permissões e disponibilidade antes de iniciar a coleta. O aplicativo exige permissão de localização, autorização de notificação em versões recentes do Android, provedor de localização ativo e sensor de movimento disponível. Caso algum requisito esteja ausente, o usuário é direcionado para a tela de permissões de telemetria.
@@ -54,10 +56,10 @@ Como a sessão depende de sinais físicos do dispositivo, a versão Android veri
 Durante a corrida, o \texttt{TelemetryForegroundService} mantém a sessão ativa em primeiro plano e atualiza a notificação associada ao acompanhamento. Essa estratégia evita que a coleta seja interrompida de forma prematura pelo sistema operacional durante uma sessão em andamento, ao mesmo tempo em que mantém transparência para o usuário sobre a execução da telemetria.
 
 \vspace{0.2cm}
-\noindent\textbf{Qualidade e testes no mobile.}
+\subsubsection{Qualidade e testes no mobile}
 \vspace{0.2cm}
 
-A base de testes está concentrada principalmente no código compartilhado e em componentes Android específicos. Há testes para o \texttt{GameController}, para o \texttt{RunCalculator}, para o processamento de telemetria com \texttt{MovementTelemetryProcessor}, para o cálculo de métricas com \texttt{ComputeEscapeMetricsUseCase} e para a conversão de dados remotos recebidos do backend. Também existem testes unitários Android para decodificação de mensagens de leaderboard e testes instrumentados voltados a componentes de interface.
+A base de testes está concentrada principalmente no código compartilhado e em componentes Android específicos. Há testes para o \texttt{GameController}, para o \texttt{RunCalculator}, para o processamento de telemetria com \texttt{MovementTelemetryProcessor}, para o cálculo de métricas com \texttt{ComputeEscapeMetricsUseCase}, para o mapeamento de estado remoto e para a conversão de dados recebidos do backend. Também existem testes unitários Android para o cliente STOMP, decodificação de mensagens de leaderboard, montagem de requisições HTTP e testes instrumentados voltados a componentes de interface.
 
 Essa distribuição de testes prioriza os pontos de maior risco arquitetural: as regras de gamificação, a transformação de sinais físicos em métricas compreensíveis pelo jogo e a compatibilidade entre o aplicativo mobile e os contratos expostos pelo backend.
 

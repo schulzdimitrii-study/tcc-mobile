@@ -2,6 +2,9 @@ package com.pedroaba.tccmobile
 
 import android.Manifest
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Build
@@ -55,10 +58,9 @@ import com.pedroaba.tccmobile.telemetry.wear.WatchGameProgressBridge
 import com.pedroaba.tccmobile.ui.components.navigation.FloatingTabBar
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.Period
 
 private const val TAG = "MainActivity"
+private const val CONNECTION_LOST_MESSAGE = "Sem conexão com a internet. Jogo encerrado."
 
 class MainActivity : ComponentActivity() {
 
@@ -68,6 +70,8 @@ class MainActivity : ComponentActivity() {
     private lateinit var backendHttpClient: BackendHttpClient
     private lateinit var userApi: UserApi
     private lateinit var watchGameProgressBridge: WatchGameProgressBridge
+    private lateinit var connectivityManager: ConnectivityManager
+    private var networkCallback: ConnectivityManager.NetworkCallback? = null
     
     private var hasLocationPermission by mutableStateOf(false)
     private var hasNotificationPermission by mutableStateOf(false)
@@ -78,7 +82,7 @@ class MainActivity : ComponentActivity() {
     private var showWatchModal by mutableStateOf(false)
     private var latestGameSnapshot by mutableStateOf(GameSnapshot())
     private var userProfileState by mutableStateOf(UserProfileState())
-    private var selectedSessionDistanceKm by mutableStateOf(1.0)
+    private var connectionErrorMessage by mutableStateOf<String?>(null)
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -113,12 +117,15 @@ class MainActivity : ComponentActivity() {
         watchGameProgressBridge = WatchGameProgressBridge(this)
         backendHttpClient = BackendHttpClient()
         userApi = UserApi(backendHttpClient)
+        connectivityManager = getSystemService(ConnectivityManager::class.java)
         onlineSessionRepository = OnlineSessionRepository(
             sessionApi = SessionApi(backendHttpClient),
             stompWebSocketClient = StompWebSocketClient()
         )
         syncTelemetryAvailability()
         bindTelemetryToOnlineSession()
+        observeRemoteSessionFailures()
+        registerNetworkMonitor()
 
         Log.d(TAG, "App started, checking auth state...")
 
@@ -177,7 +184,7 @@ class MainActivity : ComponentActivity() {
                                 telemetryStateFlow = telemetryRuntime.repository.telemetryState,
                                 remoteSessionState = remoteSessionState,
                                 onStartTelemetry = ::ensurePermissionsAndStartTelemetry,
-                                onStopTelemetry = ::stopTelemetrySession
+                        onStopTelemetry = ::stopTelemetrySession
                             )
                         }
                     }
@@ -247,6 +254,7 @@ class MainActivity : ComponentActivity() {
                             userName = session.name.substringBefore(" ").ifBlank { session.name },
                             currentUserId = session.userId,
                             remoteSessionState = remoteSessionState,
+                            connectionErrorMessage = connectionErrorMessage,
                             onDismissModal = { showWatchModal = false },
                             onTabSelected = { currentTab = it }
                         )
@@ -259,8 +267,6 @@ class MainActivity : ComponentActivity() {
                             selectedHordeId = remoteSessionState.selectedHorde?.id,
                             hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                             hordeErrorMessage = remoteSessionState.errorMessage,
-                            selectedDistanceKm = selectedSessionDistanceKm,
-                            onDistanceSelected = { selectedSessionDistanceKm = it },
                             onHordeSelected = onlineSessionRepository::selectHorde,
                             onReloadHordes = { loadHordesForSession(session) },
                             onStartRun = onStartTelemetry,
@@ -340,9 +346,9 @@ class MainActivity : ComponentActivity() {
                         telemetryStateFlow = telemetryStateFlow,
                         remoteSessionState = remoteSessionState,
                         currentUserId = session.userId,
+                        connectionErrorMessage = connectionErrorMessage,
                         gameSessionConfig = remoteSessionState.selectedHorde?.toSessionConfig()
-                            ?.copy(goalDistance = selectedSessionDistanceKm * 1_000.0)
-                            ?: SessionConfig(goalDistance = selectedSessionDistanceKm * 1_000.0),
+                            ?: SessionConfig(),
                         shouldAutoStartSession = pendingTelemetryStart,
                         currentTimeMsProvider = { SystemClock.elapsedRealtime() },
                         onSnapshotChanged = { latestGameSnapshot = it },
@@ -359,8 +365,6 @@ class MainActivity : ComponentActivity() {
                         selectedHordeId = remoteSessionState.selectedHorde?.id,
                         hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                         hordeErrorMessage = remoteSessionState.errorMessage,
-                        selectedDistanceKm = selectedSessionDistanceKm,
-                        onDistanceSelected = { selectedSessionDistanceKm = it },
                         onHordeSelected = onlineSessionRepository::selectHorde,
                         onReloadHordes = { loadHordesForSession(session) },
                         onStartRun = onStartTelemetry,
@@ -528,7 +532,7 @@ class MainActivity : ComponentActivity() {
 
         lifecycleScope.launch {
             userProfileState = userProfileState.saving()
-            userApi.updateUser(session.token, session.userId, request.withCalculatedMaxHeartRate()).fold(
+            userApi.updateUser(session.token, session.userId, request).fold(
                 onSuccess = { profile ->
                     userProfileState = userProfileState.loaded(profile)
                     currentTab = "perfil"
@@ -542,18 +546,13 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun com.pedroaba.tccmobile.backend.model.UpdateUserProfileRequest.withCalculatedMaxHeartRate():
-        com.pedroaba.tccmobile.backend.model.UpdateUserProfileRequest {
-        val birthDate = birthdayDate ?: return copy(maxHeartRate = null)
-        val age = runCatching {
-            Period.between(LocalDate.parse(birthDate), LocalDate.now()).years
-        }.getOrNull()
-
-        return copy(maxHeartRate = age?.takeIf { it >= 0 }?.let { 220 - it })
-    }
-
     private fun startTelemetrySession() {
         syncTelemetryAvailability()
+        if (!isInternetAvailable()) {
+            connectionErrorMessage = CONNECTION_LOST_MESSAGE
+            pendingTelemetryStart = false
+            return
+        }
         if (!isTelemetryCollectionAllowed()) {
             pendingTelemetryStart = false
             currentTab = "telemetry_permissions"
@@ -569,10 +568,10 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = onlineSessionRepository.startSession(
                 token = authenticatedSession.token,
-                currentUserId = authenticatedSession.userId,
-                distanceKm = selectedSessionDistanceKm
+                currentUserId = authenticatedSession.userId
             )
             if (result.isSuccess) {
+                connectionErrorMessage = null
                 pendingTelemetryStart = false
                 loadLeaderboardForSession(authenticatedSession)
                 telemetryRuntime.repository.startSession()
@@ -624,13 +623,62 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun stopLocalTelemetrySession() {
+    private fun stopLocalTelemetrySession(clearRemoteError: Boolean = true) {
         pendingTelemetryStart = false
         telemetryRuntime.repository.stopSession()
-        if (onlineSessionRepository.state.value.status == RemoteSessionStatus.ERROR) {
+        if (clearRemoteError && onlineSessionRepository.state.value.status == RemoteSessionStatus.ERROR) {
             onlineSessionRepository.clearActiveSession()
         }
         TelemetryForegroundService.stop(this)
+    }
+
+    private fun registerNetworkMonitor() {
+        val callback = object : ConnectivityManager.NetworkCallback() {
+            override fun onLost(network: Network) {
+                runOnUiThread { stopActiveGameForConnectionLoss() }
+            }
+
+            override fun onUnavailable() {
+                runOnUiThread { stopActiveGameForConnectionLoss() }
+            }
+        }
+        networkCallback = callback
+        connectivityManager.registerDefaultNetworkCallback(callback)
+    }
+
+    private fun observeRemoteSessionFailures() {
+        lifecycleScope.launch {
+            onlineSessionRepository.state.collect { state ->
+                val status = telemetryRuntime.repository.telemetryState.value.session.status
+                val telemetryRunning = status == TelemetrySessionStatus.RUNNING ||
+                    status == TelemetrySessionStatus.PAUSED
+                if (telemetryRunning && state.status == RemoteSessionStatus.ERROR) {
+                    stopActiveGameForConnectionLoss()
+                }
+            }
+        }
+    }
+
+    private fun stopActiveGameForConnectionLoss() {
+        val status = telemetryRuntime.repository.telemetryState.value.session.status
+        val telemetryRunning = status == TelemetrySessionStatus.RUNNING ||
+            status == TelemetrySessionStatus.PAUSED
+        val remoteRunning = onlineSessionRepository.state.value.sessionId != null
+
+        if (!telemetryRunning && !remoteRunning && !pendingTelemetryStart) return
+
+        connectionErrorMessage = CONNECTION_LOST_MESSAGE
+        pendingTelemetryStart = false
+        currentTab = "game"
+        stopLocalTelemetrySession(clearRemoteError = false)
+        onlineSessionRepository.failActiveSession(CONNECTION_LOST_MESSAGE)
+    }
+
+    private fun isInternetAvailable(): Boolean {
+        val network = connectivityManager.activeNetwork ?: return false
+        val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+            capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
     }
 
     private fun bindTelemetryToOnlineSession() {
@@ -641,15 +689,13 @@ class MainActivity : ComponentActivity() {
                 val session = (authState as? AuthState.Authenticated)?.session ?: return@collect
                 onlineSessionRepository.sendTelemetry(
                     userId = session.userId,
-                    telemetryState = telemetryState,
-                    snapshot = latestGameSnapshot
+                    telemetryState = telemetryState
                 )
                 watchGameProgressBridge.publish(
                     telemetryState = telemetryState,
                     snapshot = latestGameSnapshot,
                     sessionConfig = onlineSessionRepository.state.value.selectedHorde?.toSessionConfig()
-                        ?.copy(goalDistance = selectedSessionDistanceKm * 1_000.0)
-                        ?: SessionConfig(goalDistance = selectedSessionDistanceKm * 1_000.0)
+                        ?: SessionConfig()
                 )
             }
         }
@@ -657,6 +703,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        networkCallback?.let(connectivityManager::unregisterNetworkCallback)
         onlineSessionRepository.clear()
         backendHttpClient.close()
         authManager.close()

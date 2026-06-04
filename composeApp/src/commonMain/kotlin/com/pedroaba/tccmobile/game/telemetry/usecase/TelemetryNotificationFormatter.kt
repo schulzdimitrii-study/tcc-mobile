@@ -18,13 +18,12 @@ class TelemetryNotificationFormatter {
             TelemetrySessionStatus.IDLE -> "idle"
         }
 
-        val speed = state.latestSample?.speedMetersPerSecond?.let { oneDecimal(it) } ?: "0.0"
-        val distance = state.latestSample?.totalDistanceMeters?.roundToInt()
-            ?: state.session.totalDistanceMeters.roundToInt()
+        val speed = state.latestLocationPoint?.speedMetersPerSecond?.let { oneDecimal(it) } ?: "0.0"
+        val samples = state.session.sampleCount
 
         return TelemetryNotificationContent(
             title = "Session $statusLabel",
-            body = "Speed $speed m/s • Distance $distance m"
+            body = "Provider speed $speed m/s • Raw samples $samples"
         )
     }
 

@@ -1,8 +1,6 @@
 package com.pedroaba.tccmobile.telemetry.data
 
 import com.pedroaba.tccmobile.game.telemetry.model.*
-import com.pedroaba.tccmobile.game.telemetry.usecase.ComputeEscapeMetricsUseCase
-import com.pedroaba.tccmobile.game.telemetry.usecase.MovementTelemetryProcessor
 import com.pedroaba.tccmobile.game.telemetry.usecase.SelectTelemetryStrategyUseCase
 import com.pedroaba.tccmobile.telemetry.location.LocationTrackingService
 import com.pedroaba.tccmobile.telemetry.motion.MotionSensorService
@@ -20,14 +18,18 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.atan2
+import kotlin.math.cos
+import kotlin.math.pow
+import kotlin.math.sin
+import kotlin.math.sqrt
 
 class DefaultTelemetryRepository(
     private val locationTrackingService: LocationTrackingService,
     private val motionSensorService: MotionSensorService,
     private val wearTelemetryBridge: WearTelemetryBridge,
-    private val movementTelemetryProcessor: MovementTelemetryProcessor = MovementTelemetryProcessor(),
     private val selectTelemetryStrategyUseCase: SelectTelemetryStrategyUseCase = SelectTelemetryStrategyUseCase(),
-    private val computeEscapeMetricsUseCase: ComputeEscapeMetricsUseCase = ComputeEscapeMetricsUseCase(),
     dispatcher: CoroutineDispatcher = Dispatchers.Default
 ) : TelemetryRepository {
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
@@ -39,6 +41,8 @@ class DefaultTelemetryRepository(
     private var biofeedbackJob: Job? = null
     private var tickJob: Job? = null
     private var currentBiofeedbackSample: BiofeedbackSample? = null
+    private var lastLocationPoint: LocationPoint? = null
+    private var totalDistanceMeters: Double = 0.0
     private var lastResumeTimestampMs: Long? = null
 
     init {
@@ -80,10 +84,11 @@ class DefaultTelemetryRepository(
 
     override fun startSession() {
         val now = System.currentTimeMillis()
-        movementTelemetryProcessor.reset()
         cancelCollectionJobs()
         lastResumeTimestampMs = now
         currentBiofeedbackSample = null
+        lastLocationPoint = null
+        totalDistanceMeters = 0.0
 
         _telemetryState.value = TelemetryState(
             session = MovementSession(
@@ -162,7 +167,7 @@ class DefaultTelemetryRepository(
         if (availability.hasLocationPermission && availability.isLocationEnabled) {
             locationJob = scope.launch {
                 locationTrackingService.locationUpdates().collectLatest { location ->
-                    movementTelemetryProcessor.onLocation(location)?.let(::publishTelemetrySample)
+                    publishLocationPoint(location)
                 }
             }
         }
@@ -170,7 +175,7 @@ class DefaultTelemetryRepository(
         if (availability.hasMotionSensor) {
             motionJob = scope.launch {
                 motionSensorService.accelerationUpdates().collectLatest { acceleration ->
-                    movementTelemetryProcessor.onAcceleration(acceleration)?.let(::publishTelemetrySample)
+                    publishAccelerationSample(acceleration)
                 }
             }
         }
@@ -188,36 +193,48 @@ class DefaultTelemetryRepository(
         tickJob = scope.launch {
             while (isActive) {
                 delay(1_000L)
-                movementTelemetryProcessor.snapshotAt(System.currentTimeMillis())?.let(::publishTelemetrySample)
+                publishHeartbeat(System.currentTimeMillis())
             }
         }
     }
 
-    private fun publishTelemetrySample(sample: TelemetrySample) {
+    private fun publishLocationPoint(locationPoint: LocationPoint) {
         val state = _telemetryState.value
-        val strategy = state.strategy
-        val now = sample.timestampMs
-        val metrics = computeEscapeMetricsUseCase(
-            sample = sample,
-            strategy = strategy,
-            biofeedbackPresent = currentBiofeedbackSample?.bpm != null
-        )
-        val availabilityIssues = state.availability.issues.toMutableSet().apply {
-            if (sample.isLocationStale) add(TelemetryIssue.LOCATION_DATA_STALE) else remove(TelemetryIssue.LOCATION_DATA_STALE)
-        }
+        val distanceDeltaMeters = lastLocationPoint
+            ?.let { previous -> distanceBetweenMeters(previous, locationPoint) }
+            ?.takeIf { it <= MAX_LOCATION_DELTA_METERS }
+            ?: 0.0
+        totalDistanceMeters += distanceDeltaMeters
+        lastLocationPoint = locationPoint
 
         _telemetryState.value = state.copy(
-            latestSample = sample,
+            latestLocationPoint = locationPoint,
             latestBiofeedbackSample = currentBiofeedbackSample,
-            latestEscapeMetrics = metrics,
-            availability = state.availability.copy(
-                issues = availabilityIssues
-            ),
             session = state.session.copy(
-                lastUpdatedAtEpochMs = now,
-                totalDistanceMeters = sample.totalDistanceMeters,
+                lastUpdatedAtEpochMs = locationPoint.timestampMs,
+                totalDistanceMeters = totalDistanceMeters,
                 sampleCount = state.session.sampleCount + 1
             )
+        )
+    }
+
+    private fun publishAccelerationSample(accelerationSample: AccelerationSample) {
+        val state = _telemetryState.value
+        _telemetryState.value = state.copy(
+            latestAccelerationSample = accelerationSample,
+            latestBiofeedbackSample = currentBiofeedbackSample,
+            session = state.session.copy(
+                lastUpdatedAtEpochMs = accelerationSample.timestampMs,
+                sampleCount = state.session.sampleCount + 1
+            )
+        )
+    }
+
+    private fun publishHeartbeat(timestampMs: Long) {
+        val state = _telemetryState.value
+        _telemetryState.value = state.copy(
+            latestBiofeedbackSample = currentBiofeedbackSample,
+            session = state.session.copy(lastUpdatedAtEpochMs = timestampMs)
         )
     }
 
@@ -235,6 +252,20 @@ class DefaultTelemetryRepository(
         return (now - resumedAt).coerceAtLeast(0L)
     }
 
+    private fun distanceBetweenMeters(start: LocationPoint, end: LocationPoint): Double {
+        val earthRadiusMeters = 6_371_000.0
+        val lat1 = start.latitude.toRadians()
+        val lat2 = end.latitude.toRadians()
+        val deltaLat = (end.latitude - start.latitude).toRadians()
+        val deltaLon = (end.longitude - start.longitude).toRadians()
+        val a = sin(deltaLat / 2.0).pow(2) +
+            cos(lat1) * cos(lat2) * sin(deltaLon / 2.0).pow(2)
+        val c = 2.0 * atan2(sqrt(a), sqrt(1.0 - a))
+        return earthRadiusMeters * c
+    }
+
+    private fun Double.toRadians(): Double = this * PI / 180.0
+
     private fun cancelCollectionJobs() {
         locationJob?.cancel()
         motionJob?.cancel()
@@ -244,5 +275,9 @@ class DefaultTelemetryRepository(
         motionJob = null
         biofeedbackJob = null
         tickJob = null
+    }
+
+    private companion object {
+        const val MAX_LOCATION_DELTA_METERS = 150.0
     }
 }

@@ -1,5 +1,6 @@
 package com.pedroaba.tccmobile.backend.online
 
+import android.util.Log
 import com.pedroaba.tccmobile.backend.BackendConfig
 import com.pedroaba.tccmobile.backend.model.BiometricDataMessage
 import com.pedroaba.tccmobile.backend.model.GameStateResponse
@@ -39,6 +40,7 @@ class StompWebSocketClient(
             Request.Builder().url(BackendConfig.webSocketUrl).build(),
             object : WebSocketListener() {
                 override fun onOpen(webSocket: WebSocket, response: Response) {
+                    Log.d(REALTIME_LOG_TAG, "socket_open url=${BackendConfig.webSocketUrl}")
                     webSocket.send(
                         buildFrame(
                             command = "CONNECT",
@@ -51,11 +53,17 @@ class StompWebSocketClient(
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
+                    Log.d(REALTIME_LOG_TAG, "socket_raw_message=${text.take(LOG_BODY_LIMIT)}")
                     parseFrames(text).forEach { frame ->
+                        Log.d(
+                            REALTIME_LOG_TAG,
+                            "stomp_frame command=${frame.command} destination=${frame.headers["destination"] ?: "--"} body=${frame.body.take(LOG_BODY_LIMIT)}"
+                        )
                         when (frame.command) {
                             "CONNECTED" -> {
                                 connected.set(true)
                                 currentSessionId?.let { activeSessionId ->
+                                    Log.d(REALTIME_LOG_TAG, "stomp_connected sessionId=$activeSessionId")
                                     subscribeToSessionTopics(webSocket, activeSessionId)
                                     onConnected()
                                 }
@@ -66,7 +74,24 @@ class StompWebSocketClient(
                                     "/topic/session/$sessionId/leaderboard" -> {
                                         runCatching {
                                             json.decodeFromString<LeaderboardResponse>(frame.body)
-                                        }.onSuccess(onLeaderboard).onFailure {
+                                        }.onSuccess { leaderboard ->
+                                            Log.d(
+                                                REALTIME_LOG_TAG,
+                                                "leaderboard_received sessionId=${leaderboard.sessionId} rank=${leaderboard.userRank} entries=${leaderboard.entries.size} horde=${leaderboard.hordeVirtualDistanceKm} behind=${leaderboard.isBehindHorde} distanceToHorde=${leaderboard.distanceToHorde}"
+                                            )
+                                            val decodedEntries = leaderboard.entries.joinToString(
+                                                prefix = "[",
+                                                postfix = "]"
+                                            ) { entry ->
+                                                "{userId=${entry.userId},rank=${entry.rank},distanceKm=${entry.distanceKm},cardiacZone=${entry.cardiacZone}}"
+                                            }
+                                            Log.d(
+                                                REALTIME_LOG_TAG,
+                                                "DECODED_LEADERBOARD sessionId=${leaderboard.sessionId} userRank=${leaderboard.userRank} hordeVirtualDistanceKm=${leaderboard.hordeVirtualDistanceKm} isBehindHorde=${leaderboard.isBehindHorde} distanceToHordeKm=${leaderboard.distanceToHorde} entries=$decodedEntries"
+                                            )
+                                            onLeaderboard(leaderboard)
+                                        }.onFailure {
+                                            Log.e(REALTIME_LOG_TAG, "leaderboard_decode_failed body=${frame.body.take(LOG_BODY_LIMIT)}", it)
                                             onFailure("Nao foi possivel ler o leaderboard em tempo real.")
                                         }
                                     }
@@ -74,7 +99,18 @@ class StompWebSocketClient(
                                     "/topic/session/$sessionId/game-state" -> {
                                         runCatching {
                                             json.decodeFromString<GameStateResponse>(frame.body)
-                                        }.onSuccess(onGameState).onFailure {
+                                        }.onSuccess { gameState ->
+                                            Log.d(
+                                                REALTIME_LOG_TAG,
+                                                "game_state_received sessionId=${gameState.sessionId} userId=${gameState.userId} player=${gameState.playerPosition} horde=${gameState.hordePosition} toGoal=${gameState.distanceToGoal} playerToHorde=${gameState.distancePlayerToHorde} playerSpeed=${gameState.playerSpeed} hordeSpeed=${gameState.hordeSpeed} progress=${gameState.raceProgress} status=${gameState.gameStatus}"
+                                            )
+                                            Log.d(
+                                                REALTIME_LOG_TAG,
+                                                "DECODED_GAME_STATE sessionId=${gameState.sessionId} userId=${gameState.userId} playerPositionKm=${gameState.playerPosition} hordePositionKm=${gameState.hordePosition} distanceToGoalKm=${gameState.distanceToGoal} distancePlayerToHordeKm=${gameState.distancePlayerToHorde} playerSpeedKmh=${gameState.playerSpeed} hordeSpeedKmh=${gameState.hordeSpeed} raceProgressPercent=${gameState.raceProgress} gameStatus=${gameState.gameStatus}"
+                                            )
+                                            onGameState(gameState)
+                                        }.onFailure {
+                                            Log.e(REALTIME_LOG_TAG, "game_state_decode_failed body=${frame.body.take(LOG_BODY_LIMIT)}", it)
                                             onFailure("Nao foi possivel ler o estado do jogo em tempo real.")
                                         }
                                     }
@@ -83,6 +119,7 @@ class StompWebSocketClient(
 
                             "ERROR" -> {
                                 connected.set(false)
+                                Log.e(REALTIME_LOG_TAG, "stomp_error body=${frame.body.take(LOG_BODY_LIMIT)}")
                                 onFailure(frame.body.ifBlank { "Falha na conexao em tempo real." })
                             }
                         }
@@ -92,11 +129,13 @@ class StompWebSocketClient(
                 override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                     connected.set(false)
                     if (intentionalDisconnect.get()) return
+                    Log.e(REALTIME_LOG_TAG, "socket_failure code=${response?.code} message=${t.message}", t)
                     onFailure(t.message ?: "Falha ao conectar ao leaderboard em tempo real.")
                 }
 
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     connected.set(false)
+                    Log.d(REALTIME_LOG_TAG, "socket_closed code=$code reason=$reason")
                 }
             }
         )
@@ -104,6 +143,10 @@ class StompWebSocketClient(
 
     fun sendBiometricData(message: BiometricDataMessage): Boolean {
         if (!connected.get()) return false
+        Log.d(
+            REALTIME_LOG_TAG,
+            "telemetry_send sessionId=${message.sessionId} userId=${message.userId} timestamp=${message.timestamp} bpm=${message.bpm} cadence=${message.cadence} speed=${message.speed} pace=${message.pace} distance=${message.accumulatedDistance} calories=${message.accumulatedCalories}"
+        )
         val frame = buildFrame(
             command = "SEND",
             headers = mapOf(
@@ -148,6 +191,7 @@ class StompWebSocketClient(
     }
 
     private fun subscribeToSessionTopics(webSocket: WebSocket, sessionId: String) {
+        Log.d(REALTIME_LOG_TAG, "subscribe_leaderboard destination=/topic/session/$sessionId/leaderboard")
         webSocket.send(
             buildFrame(
                 command = "SUBSCRIBE",
@@ -157,6 +201,7 @@ class StompWebSocketClient(
                 )
             )
         )
+        Log.d(REALTIME_LOG_TAG, "subscribe_game_state destination=/topic/session/$sessionId/game-state")
         webSocket.send(
             buildFrame(
                 command = "SUBSCRIBE",
@@ -166,6 +211,11 @@ class StompWebSocketClient(
                 )
             )
         )
+    }
+
+    private companion object {
+        const val REALTIME_LOG_TAG = "TccRealtime"
+        const val LOG_BODY_LIMIT = 1_000
     }
 }
 

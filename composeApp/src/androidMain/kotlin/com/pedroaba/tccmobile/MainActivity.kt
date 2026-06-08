@@ -36,6 +36,7 @@ import com.pedroaba.tccmobile.auth.AuthResult
 import com.pedroaba.tccmobile.auth.AuthState
 import com.pedroaba.tccmobile.backend.http.BackendHttpClient
 import com.pedroaba.tccmobile.backend.http.isBackendAuthFailure
+import com.pedroaba.tccmobile.backend.online.HordeCatalogStatus
 import com.pedroaba.tccmobile.backend.online.OnlineSessionRepository
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
@@ -83,6 +84,7 @@ class MainActivity : ComponentActivity() {
     private var latestGameSnapshot by mutableStateOf(GameSnapshot())
     private var userProfileState by mutableStateOf(UserProfileState())
     private var connectionErrorMessage by mutableStateOf<String?>(null)
+    private var selectedDistanceKm by mutableStateOf(1.0)
 
     private val locationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestMultiplePermissions()
@@ -249,6 +251,11 @@ class MainActivity : ComponentActivity() {
         Box(modifier = Modifier.fillMaxSize()) {
             when (currentTab) {
                 "home" -> {
+                    LaunchedEffect(session.token, remoteSessionState.hordeCatalogStatus) {
+                        if (remoteSessionState.hordeCatalogStatus == HordeCatalogStatus.IDLE) {
+                            loadHordesForSession(session)
+                        }
+                    }
                     if (showWatchModal) {
                         com.pedroaba.tccmobile.features.home.screens.HomeScreenWithModal(
                             userName = session.name.substringBefore(" ").ifBlank { session.name },
@@ -265,9 +272,11 @@ class MainActivity : ComponentActivity() {
                             remoteSessionState = remoteSessionState,
                             hordes = remoteSessionState.hordes,
                             selectedHordeId = remoteSessionState.selectedHorde?.id,
+                            selectedDistanceKm = selectedDistanceKm,
                             hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                             hordeErrorMessage = remoteSessionState.errorMessage,
                             onHordeSelected = onlineSessionRepository::selectHorde,
+                            onDistanceSelected = { selectedDistanceKm = it },
                             onReloadHordes = { loadHordesForSession(session) },
                             onStartRun = onStartTelemetry,
                             onViewProfile = { currentTab = "perfil" },
@@ -347,8 +356,7 @@ class MainActivity : ComponentActivity() {
                         remoteSessionState = remoteSessionState,
                         currentUserId = session.userId,
                         connectionErrorMessage = connectionErrorMessage,
-                        gameSessionConfig = remoteSessionState.selectedHorde?.toSessionConfig()
-                            ?: SessionConfig(),
+                        gameSessionConfig = sessionConfigForSelectedOptions(remoteSessionState),
                         shouldAutoStartSession = pendingTelemetryStart,
                         currentTimeMsProvider = { SystemClock.elapsedRealtime() },
                         onSnapshotChanged = { latestGameSnapshot = it },
@@ -357,15 +365,22 @@ class MainActivity : ComponentActivity() {
                     )
                 }
                 else -> {
+                    LaunchedEffect(session.token, remoteSessionState.hordeCatalogStatus) {
+                        if (remoteSessionState.hordeCatalogStatus == HordeCatalogStatus.IDLE) {
+                            loadHordesForSession(session)
+                        }
+                    }
                     com.pedroaba.tccmobile.features.home.screens.HomeScreen(
                         userName = session.name.substringBefore(" ").ifBlank { session.name },
                         currentUserId = session.userId,
                         remoteSessionState = remoteSessionState,
                         hordes = remoteSessionState.hordes,
                         selectedHordeId = remoteSessionState.selectedHorde?.id,
+                        selectedDistanceKm = selectedDistanceKm,
                         hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                         hordeErrorMessage = remoteSessionState.errorMessage,
                         onHordeSelected = onlineSessionRepository::selectHorde,
+                        onDistanceSelected = { selectedDistanceKm = it },
                         onReloadHordes = { loadHordesForSession(session) },
                         onStartRun = onStartTelemetry,
                         onViewProfile = { currentTab = "perfil" },
@@ -506,6 +521,15 @@ class MainActivity : ComponentActivity() {
         loadHordesForSession(session)
     }
 
+    private fun sessionConfigForSelectedOptions(remoteSessionState: RemoteSessionState): SessionConfig {
+        val baseConfig = remoteSessionState.selectedHorde?.toSessionConfig()
+            ?: SessionConfig()
+
+        return baseConfig.copy(
+            goalDistance = selectedDistanceKm.coerceAtLeast(0.0) * 1_000.0
+        )
+    }
+
     private fun loadUserProfile(session: UserSession) {
         if (session.userId.isBlank()) return
 
@@ -568,7 +592,8 @@ class MainActivity : ComponentActivity() {
         lifecycleScope.launch {
             val result = onlineSessionRepository.startSession(
                 token = authenticatedSession.token,
-                currentUserId = authenticatedSession.userId
+                currentUserId = authenticatedSession.userId,
+                goalDistanceKm = selectedDistanceKm
             )
             if (result.isSuccess) {
                 connectionErrorMessage = null

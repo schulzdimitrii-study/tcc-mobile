@@ -27,6 +27,7 @@ data class RemoteSessionState(
     val gameState: GameStateResponse? = null,
     val hordes: List<HordeDto> = emptyList(),
     val selectedHorde: HordeDto? = null,
+    val usesManualHordeConfig: Boolean = false,
     val hordeCatalogStatus: HordeCatalogStatus = HordeCatalogStatus.IDLE,
     val errorMessage: String? = null
 ) {
@@ -39,7 +40,11 @@ data class RemoteSessionState(
         val currentSelection = selectedHorde?.let { selected ->
             newHordes.firstOrNull { it.id == selected.id }
         }
-        val fallbackSelection = newHordes.firstOrNull { it.id.isNotBlank() }
+        val fallbackSelection = if (usesManualHordeConfig) {
+            null
+        } else {
+            newHordes.firstOrNull { it.id.isNotBlank() }
+        }
 
         return copy(
             hordes = newHordes,
@@ -55,7 +60,13 @@ data class RemoteSessionState(
     )
 
     fun onHordeSelected(hordeId: String): RemoteSessionState = copy(
-        selectedHorde = hordes.firstOrNull { it.id == hordeId } ?: selectedHorde
+        selectedHorde = hordes.firstOrNull { it.id == hordeId } ?: selectedHorde,
+        usesManualHordeConfig = false
+    )
+
+    fun onManualHordeConfigured(): RemoteSessionState = copy(
+        selectedHorde = null,
+        usesManualHordeConfig = true
     )
 
     fun onSessionStarted(newSessionId: String): RemoteSessionState = copy(

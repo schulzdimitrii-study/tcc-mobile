@@ -25,7 +25,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -44,7 +46,9 @@ import com.pedroaba.tccmobile.game.models.SessionConfig
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetrySessionStatus
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import com.pedroaba.tccmobile.features.game.screens.components.SessionSignalCard
+import com.pedroaba.tccmobile.features.game.screens.components.GameResultDialog
 import com.pedroaba.tccmobile.features.game.screens.components.TelemetryStatusCard
+import com.pedroaba.tccmobile.features.game.screens.components.gameResultDialogContentFor
 import com.pedroaba.tccmobile.theme.AppTheme
 import com.pedroaba.tccmobile.theme.TccMobileTheme
 import com.pedroaba.tccmobile.ui.components.AppCallout
@@ -70,6 +74,7 @@ fun GameScreen(
         val snapshot by gameController.snapshot.collectAsState()
         val isSceneLoading by gameController.isSceneLoading.collectAsState()
         val isActive by gameController.isActive.collectAsState()
+        var dismissedResult by remember { mutableStateOf<String?>(null) }
         val telemetryState = telemetryStateFlow?.collectAsState()?.value ?: TelemetryState()
         val isRemotePreparing = remoteSessionState.status == RemoteSessionStatus.STARTING ||
             remoteSessionState.status == RemoteSessionStatus.CONNECTING
@@ -86,6 +91,12 @@ fun GameScreen(
 
         LaunchedEffect(snapshot) {
             onSnapshotChanged(snapshot)
+        }
+
+        LaunchedEffect(snapshot.result) {
+            if (snapshot.result == "running") {
+                dismissedResult = null
+            }
         }
 
         LaunchedEffect(isSceneLoading, shouldAutoStartSession) {
@@ -271,6 +282,14 @@ fun GameScreen(
                     )
                 }
             }
+        }
+
+        val resultDialogContent = gameResultDialogContentFor(snapshot.result)
+        if (resultDialogContent != null && dismissedResult != snapshot.result) {
+            GameResultDialog(
+                content = resultDialogContent,
+                onDismiss = { dismissedResult = snapshot.result }
+            )
         }
     }
 }

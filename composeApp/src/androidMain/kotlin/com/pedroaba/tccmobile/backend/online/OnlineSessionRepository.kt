@@ -60,7 +60,8 @@ class OnlineSessionRepository(
 
     suspend fun startSession(
         token: String,
-        currentUserId: String
+        currentUserId: String,
+        goalDistanceKm: Double
     ): Result<String> {
         Log.d(REALTIME_LOG_TAG, "remote_session_start_requested currentUserId=$currentUserId")
         val currentState = _state.value
@@ -91,7 +92,8 @@ class OnlineSessionRepository(
         return sessionApi.startSession(
             token,
             StartSessionRequest(
-                hordeId = selectedHorde.id
+                hordeId = selectedHorde.id,
+                goalDistanceKm = goalDistanceKm
             )
         ).fold(
             onSuccess = { response ->

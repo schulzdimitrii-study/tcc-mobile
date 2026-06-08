@@ -44,9 +44,11 @@ fun HomeScreen(
     remoteSessionState: RemoteSessionState = RemoteSessionState(),
     hordes: List<HordeDto> = emptyList(),
     selectedHordeId: String? = null,
+    selectedDistanceKm: Double = 1.0,
     hordeCatalogStatus: HordeCatalogStatus = HordeCatalogStatus.IDLE,
     hordeErrorMessage: String? = null,
     onHordeSelected: (String) -> Unit = {},
+    onDistanceSelected: (Double) -> Unit = {},
     onReloadHordes: () -> Unit = {},
     onStartRun: () -> Unit = {},
     onViewProfile: () -> Unit = {},
@@ -79,8 +81,8 @@ fun HomeScreen(
             eyebrow = if (canStartHorde) "HORDA PRONTA" else "SELECIONE UMA HORDA",
             title = selectedHorde?.name ?: "Escolha uma horda do backend.",
             body = selectedHorde?.let {
-                "${it.displayDifficulty()} · ${it.displayPace()}"
-            } ?: "Escolha uma horda carregada do backend.",
+                "${it.displayDifficulty()} · ${it.displayPace()} · ${selectedDistanceKm.toInt()} km"
+            } ?: "Escolha uma horda carregada do backend e a quilometragem.",
             primaryAction = when {
                 isLoadingHordes -> "Carregando"
                 canStartHorde -> "Comecar horda"
@@ -110,6 +112,20 @@ fun HomeScreen(
                     )
                     PanelDivider()
                 }
+                AppSelect(
+                    options = distanceOptions.map { distanceKm ->
+                        AppSelectOption(
+                            label = "${distanceKm.toInt()} km",
+                            value = distanceKm.toInt().toString()
+                        )
+                    },
+                    value = selectedDistanceKm.toInt().toString(),
+                    onValueChange = { selected ->
+                        selected.toDoubleOrNull()?.let(onDistanceSelected)
+                    },
+                    placeholder = "Selecionar quilometragem"
+                )
+                PanelDivider()
                 hordeErrorMessage?.let {
                     AppCallout(text = it)
                     PanelDivider()
@@ -264,3 +280,5 @@ private fun formatKm(value: Double): String {
     val rounded = round(value * 100.0) / 100.0
     return "$rounded km"
 }
+
+private val distanceOptions = listOf(1.0, 3.0, 5.0)

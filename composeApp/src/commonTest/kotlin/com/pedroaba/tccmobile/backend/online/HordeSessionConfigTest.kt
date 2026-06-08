@@ -23,6 +23,18 @@ class HordeSessionConfigTest {
     }
 
     @Test
+    fun `horde config uses same target distance formula as backend game state`() {
+        val config = HordeDto(
+            id = "horde-1",
+            name = "Centro",
+            estimatedDuration = 30,
+            targetPace = 6.0
+        ).toSessionConfig()
+
+        assertEquals(5_000.0, config.goalDistance)
+    }
+
+    @Test
     fun `easy horde with slow pace lowers chase pressure`() {
         val config = HordeDto(
             id = "horde-1",

@@ -9,6 +9,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.pedroaba.tccmobile.backend.model.GameStateResponse
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlin.math.roundToInt
@@ -16,9 +17,9 @@ import kotlin.math.roundToInt
 @Composable
 fun SessionSignalCard(
     telemetryState: TelemetryState,
-    remoteSessionState: RemoteSessionState
+    remoteSessionState: RemoteSessionState,
+    remoteGameState: GameStateResponse? = remoteSessionState.gameState
 ) {
-    val remoteGameState = remoteSessionState.gameState
     val runnerVelocityLabel = remoteGameState
         ?.playerSpeed
         ?.let(::formatOneDecimal)

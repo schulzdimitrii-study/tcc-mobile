@@ -12,6 +12,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.pedroaba.tccmobile.backend.model.GameStateResponse
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlin.math.roundToInt
@@ -19,7 +20,8 @@ import kotlin.math.roundToInt
 @Composable
 fun TelemetryStatusCard(
     telemetryState: TelemetryState,
-    remoteSessionState: RemoteSessionState
+    remoteSessionState: RemoteSessionState,
+    remoteGameState: GameStateResponse? = remoteSessionState.gameState
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -35,7 +37,7 @@ fun TelemetryStatusCard(
 
             val location = telemetryState.latestLocationPoint
             val acceleration = telemetryState.latestAccelerationSample
-            val gameState = remoteSessionState.gameState
+            val gameState = remoteGameState
 
             StatusRow("Raw GPS", location?.provider ?: "--")
             StatusRow("GPS Accuracy", location?.accuracyMeters?.let { "${formatOneDecimal(it)} m" } ?: "--")

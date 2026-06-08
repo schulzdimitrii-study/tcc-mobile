@@ -35,6 +35,7 @@ import com.pedroaba.tccmobile.backend.model.GameStateResponse
 import com.pedroaba.tccmobile.backend.model.GameStatusDto
 import com.pedroaba.tccmobile.backend.online.RemoteSessionState
 import com.pedroaba.tccmobile.backend.online.RemoteSessionStatus
+import com.pedroaba.tccmobile.backend.online.toGameSnapshot
 import com.pedroaba.tccmobile.game.GameController
 import com.pedroaba.tccmobile.game.KorgeGameView
 import com.pedroaba.tccmobile.game.debug.GameDebugLogger
@@ -77,7 +78,8 @@ fun GameScreen(
             remoteSessionState.status == RemoteSessionStatus.CONNECTING ||
             remoteSessionState.status == RemoteSessionStatus.ACTIVE ||
             remoteSessionState.status == RemoteSessionStatus.ENDING
-        val authoritativeSnapshot = remoteSessionState.gameState?.toAuthoritativeSnapshot(
+        val effectiveGameState = remoteSessionState.gameState
+        val authoritativeSnapshot = effectiveGameState?.toGameSnapshot(
             elapsedSeconds = 0.0
         )
         val canUseSessionButton = !isSceneLoading && !isRemotePreparing
@@ -92,11 +94,11 @@ fun GameScreen(
             }
         }
 
-        LaunchedEffect(authoritativeSnapshot, remoteSessionState.gameState?.gameStatus) {
+        LaunchedEffect(authoritativeSnapshot, effectiveGameState?.gameStatus) {
             authoritativeSnapshot?.let { nextSnapshot ->
                 gameController.applyAuthoritativeSnapshot(
                     snapshot = nextSnapshot,
-                    isRunning = remoteSessionState.gameState?.gameStatus
+                    isRunning = effectiveGameState?.gameStatus
                         ?.let { it == GameStatusDto.RUNNING }
                         ?: hasRemoteSession
                 )
@@ -120,11 +122,11 @@ fun GameScreen(
             }
         }
 
-        LaunchedEffect(snapshot.result, isActive, telemetryState.session.status, remoteSessionState.gameState?.gameStatus, hasRemoteSession) {
+        LaunchedEffect(snapshot.result, isActive, telemetryState.session.status, effectiveGameState?.gameStatus, hasRemoteSession) {
             val telemetryRunning = telemetryState.session.status == TelemetrySessionStatus.RUNNING ||
                 telemetryState.session.status == TelemetrySessionStatus.PAUSED
-            val remoteTerminal = remoteSessionState.gameState?.gameStatus == GameStatusDto.CAUGHT ||
-                remoteSessionState.gameState?.gameStatus == GameStatusDto.ESCAPED
+            val remoteTerminal = effectiveGameState?.gameStatus == GameStatusDto.CAUGHT ||
+                effectiveGameState?.gameStatus == GameStatusDto.ESCAPED
 
             if (telemetryRunning && remoteTerminal) {
                 onStopTelemetrySession?.invoke()
@@ -185,7 +187,7 @@ fun GameScreen(
                         .verticalScroll(rememberScrollState())
                 ) {
                     GameProgressCard(
-                        remoteSessionState = remoteSessionState
+                        remoteGameState = effectiveGameState
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
@@ -256,14 +258,16 @@ fun GameScreen(
 
                     SessionSignalCard(
                         telemetryState = telemetryState,
-                        remoteSessionState = remoteSessionState
+                        remoteSessionState = remoteSessionState,
+                        remoteGameState = effectiveGameState
                     )
 
                     Spacer(modifier = Modifier.height(16.dp))
 
                     TelemetryStatusCard(
                         telemetryState = telemetryState,
-                        remoteSessionState = remoteSessionState
+                        remoteSessionState = remoteSessionState,
+                        remoteGameState = effectiveGameState
                     )
                 }
             }
@@ -278,9 +282,8 @@ private val defaultGameSessionConfig = SessionConfig(
 
 @Composable
 private fun GameProgressCard(
-    remoteSessionState: RemoteSessionState
+    remoteGameState: GameStateResponse?
 ) {
-    val remoteGameState = remoteSessionState.gameState
     val runnerProgress = remoteGameState
         ?.raceProgress
         ?.let { (it / 100.0).coerceIn(0.0, 1.0).toFloat() }
@@ -398,23 +401,6 @@ private fun PositionMarker(
 private fun roundToOneDecimal(value: Double): Double = round(value * 10.0) / 10.0
 
 private fun roundToTwoDecimals(value: Double): Double = round(value * 100.0) / 100.0
-
-private fun GameStateResponse.toAuthoritativeSnapshot(elapsedSeconds: Double): GameSnapshot {
-    return GameSnapshot(
-        distance = (playerPosition * 1_000.0).coerceAtLeast(0.0),
-        hordePressure = 0.0,
-        risk = 0.0,
-        performanceScore = 0.0,
-        runnerVelocity = playerSpeed,
-        hordeVelocity = hordeSpeed,
-        elapsedSeconds = elapsedSeconds,
-        result = when (gameStatus) {
-            GameStatusDto.RUNNING -> "running"
-            GameStatusDto.CAUGHT -> "caught"
-            GameStatusDto.ESCAPED -> "escaped"
-        }
-    )
-}
 
 private fun RemoteSessionStatus.loadingLabel(): String = when (this) {
     RemoteSessionStatus.STARTING -> "Abrindo sessao no servidor..."

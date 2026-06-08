@@ -15,8 +15,13 @@ fun HordeDto.toSessionConfig(): SessionConfig {
         ?.takeIf { it > 0.0 }
         ?.let { (6.0 / it).coerceIn(0.75, 1.35) }
         ?: 1.0
+    val goalDistanceMeters = targetPace
+        ?.takeIf { it > 0.0 }
+        ?.let { pace -> estimatedDuration.takeIf { it > 0 }?.toDouble()?.div(pace)?.times(1_000.0) }
+        ?: baseConfig.goalDistance
 
     return baseConfig.copy(
+        goalDistance = goalDistanceMeters,
         sessionDurationSeconds = estimatedDuration
             .takeIf { it > 0 }
             ?.let { it * 60.0 }

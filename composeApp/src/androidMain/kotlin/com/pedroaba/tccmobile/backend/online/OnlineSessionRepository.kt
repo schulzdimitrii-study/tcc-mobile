@@ -1,5 +1,6 @@
 package com.pedroaba.tccmobile.backend.online
 
+import android.util.Log
 import com.pedroaba.tccmobile.backend.model.StartSessionRequest
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlinx.coroutines.CompletableDeferred
@@ -61,6 +62,7 @@ class OnlineSessionRepository(
         token: String,
         currentUserId: String
     ): Result<String> {
+        Log.d(REALTIME_LOG_TAG, "remote_session_start_requested currentUserId=$currentUserId")
         val currentState = _state.value
         if (currentState.sessionId != null && currentState.status != RemoteSessionStatus.IDLE) {
             when (currentState.status) {
@@ -94,22 +96,41 @@ class OnlineSessionRepository(
         ).fold(
             onSuccess = { response ->
                 val connectionResult = CompletableDeferred<Result<String>>()
+                Log.d(
+                    REALTIME_LOG_TAG,
+                    "remote_session_started sessionId=${response.sessionId} currentUserId=$currentUserId selectedHordeId=${selectedHorde.id}"
+                )
                 _state.value = _state.value.onSessionStarted(response.sessionId)
                 stompWebSocketClient.connect(
                     sessionId = response.sessionId,
                     onConnected = {
+                        Log.d(REALTIME_LOG_TAG, "remote_socket_connected sessionId=${response.sessionId}")
                         _state.value = _state.value.onSocketConnected()
                         connectionResult.complete(Result.success(response.sessionId))
                     },
                     onLeaderboard = { leaderboard ->
+                        Log.d(
+                            REALTIME_LOG_TAG,
+                            "remote_leaderboard_state_update sessionId=${leaderboard.sessionId} entries=${leaderboard.entries.size}"
+                        )
                         _state.value = _state.value.onLeaderboardUpdated(leaderboard)
                     },
                     onGameState = { gameState ->
                         if (gameState.userId == currentUserId) {
+                            Log.d(
+                                REALTIME_LOG_TAG,
+                                "remote_game_state_accepted sessionId=${gameState.sessionId} userId=${gameState.userId} status=${gameState.gameStatus} playerKm=${gameState.playerPosition} hordeKm=${gameState.hordePosition}"
+                            )
                             _state.value = _state.value.onGameStateUpdated(gameState)
+                        } else {
+                            Log.w(
+                                REALTIME_LOG_TAG,
+                                "remote_game_state_discarded_user_mismatch sessionId=${gameState.sessionId} gameStateUserId=${gameState.userId} currentUserId=$currentUserId status=${gameState.gameStatus}"
+                            )
                         }
                     },
                     onFailure = { message ->
+                        Log.e(REALTIME_LOG_TAG, "remote_realtime_failure message=$message")
                         _state.value = _state.value.onRealtimeFailure(message)
                         if (!connectionResult.isCompleted) {
                             connectionResult.complete(Result.failure(IllegalStateException(message)))
@@ -163,8 +184,15 @@ class OnlineSessionRepository(
         userId: String,
         telemetryState: TelemetryState
     ): Boolean {
-        val sessionId = _state.value.sessionId ?: return false
-        if (!stompWebSocketClient.isConnected()) return false
+        val sessionId = _state.value.sessionId
+        if (sessionId == null) {
+            Log.d(REALTIME_LOG_TAG, "telemetry_send_skipped reason=no_remote_session userId=$userId")
+            return false
+        }
+        if (!stompWebSocketClient.isConnected()) {
+            Log.d(REALTIME_LOG_TAG, "telemetry_send_skipped reason=socket_not_connected sessionId=$sessionId userId=$userId")
+            return false
+        }
 
         val now = currentTimeMsProvider()
         if (now - lastTelemetrySentAtMs < 1_000L) return false
@@ -174,11 +202,21 @@ class OnlineSessionRepository(
             userId = userId,
             telemetryState = telemetryState,
             timestampMs = now
-        ) ?: return false
+        )
+        if (message == null) {
+            Log.d(REALTIME_LOG_TAG, "telemetry_send_skipped reason=no_signal sessionId=$sessionId userId=$userId")
+            return false
+        }
 
         val sent = stompWebSocketClient.sendBiometricData(message)
         if (sent) {
             lastTelemetrySentAtMs = now
+            Log.d(
+                REALTIME_LOG_TAG,
+                "telemetry_send_confirmed sessionId=$sessionId userId=$userId distanceKm=${message.accumulatedDistance} speedKmh=${message.speed} bpm=${message.bpm}"
+            )
+        } else {
+            Log.w(REALTIME_LOG_TAG, "telemetry_send_failed sessionId=$sessionId userId=$userId")
         }
         return sent
     }
@@ -197,5 +235,9 @@ class OnlineSessionRepository(
         stompWebSocketClient.disconnect()
         lastTelemetrySentAtMs = 0L
         _state.value = _state.value.onRealtimeFailure(message)
+    }
+
+    private companion object {
+        const val REALTIME_LOG_TAG = "TccRealtime"
     }
 }

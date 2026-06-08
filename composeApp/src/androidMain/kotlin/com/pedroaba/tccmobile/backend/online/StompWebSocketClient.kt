@@ -70,8 +70,15 @@ class StompWebSocketClient(
                             }
 
                             "MESSAGE" -> {
-                                when (frame.headers["destination"]) {
-                                    "/topic/session/$sessionId/leaderboard" -> {
+                                val destination = frame.headers["destination"]
+                                val expectedLeaderboardDestination = "/topic/session/$sessionId/leaderboard"
+                                val expectedGameStateDestination = "/topic/session/$sessionId/game-state"
+                                Log.d(
+                                    REALTIME_LOG_TAG,
+                                    "message_route destination=${destination ?: "--"} expectedLeaderboard=$expectedLeaderboardDestination expectedGameState=$expectedGameStateDestination"
+                                )
+                                when (destination) {
+                                    expectedLeaderboardDestination -> {
                                         runCatching {
                                             json.decodeFromString<LeaderboardResponse>(frame.body)
                                         }.onSuccess { leaderboard ->
@@ -96,7 +103,11 @@ class StompWebSocketClient(
                                         }
                                     }
 
-                                    "/topic/session/$sessionId/game-state" -> {
+                                    expectedGameStateDestination -> {
+                                        Log.d(
+                                            REALTIME_LOG_TAG,
+                                            "game_state_frame_matched destination=$destination body=${frame.body.take(LOG_BODY_LIMIT)}"
+                                        )
                                         runCatching {
                                             json.decodeFromString<GameStateResponse>(frame.body)
                                         }.onSuccess { gameState ->
@@ -113,6 +124,13 @@ class StompWebSocketClient(
                                             Log.e(REALTIME_LOG_TAG, "game_state_decode_failed body=${frame.body.take(LOG_BODY_LIMIT)}", it)
                                             onFailure("Nao foi possivel ler o estado do jogo em tempo real.")
                                         }
+                                    }
+
+                                    else -> {
+                                        Log.w(
+                                            REALTIME_LOG_TAG,
+                                            "message_unhandled_destination destination=${destination ?: "--"} sessionId=$sessionId body=${frame.body.take(LOG_BODY_LIMIT)}"
+                                        )
                                     }
                                 }
                             }
@@ -192,7 +210,7 @@ class StompWebSocketClient(
 
     private fun subscribeToSessionTopics(webSocket: WebSocket, sessionId: String) {
         Log.d(REALTIME_LOG_TAG, "subscribe_leaderboard destination=/topic/session/$sessionId/leaderboard")
-        webSocket.send(
+        val leaderboardSubscribed = webSocket.send(
             buildFrame(
                 command = "SUBSCRIBE",
                 headers = mapOf(
@@ -201,8 +219,9 @@ class StompWebSocketClient(
                 )
             )
         )
+        Log.d(REALTIME_LOG_TAG, "subscribe_leaderboard_sent success=$leaderboardSubscribed sessionId=$sessionId")
         Log.d(REALTIME_LOG_TAG, "subscribe_game_state destination=/topic/session/$sessionId/game-state")
-        webSocket.send(
+        val gameStateSubscribed = webSocket.send(
             buildFrame(
                 command = "SUBSCRIBE",
                 headers = mapOf(
@@ -211,6 +230,7 @@ class StompWebSocketClient(
                 )
             )
         )
+        Log.d(REALTIME_LOG_TAG, "subscribe_game_state_sent success=$gameStateSubscribed sessionId=$sessionId")
     }
 
     private companion object {

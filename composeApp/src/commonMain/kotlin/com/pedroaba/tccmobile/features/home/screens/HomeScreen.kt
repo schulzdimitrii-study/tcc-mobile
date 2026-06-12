@@ -45,6 +45,7 @@ fun HomeScreen(
     hordes: List<HordeDto> = emptyList(),
     selectedHordeId: String? = null,
     selectedDistanceKm: Double = 1.0,
+    isWatchConnected: Boolean = false,
     hordeCatalogStatus: HordeCatalogStatus = HordeCatalogStatus.IDLE,
     hordeErrorMessage: String? = null,
     onHordeSelected: (String) -> Unit = {},
@@ -74,6 +75,12 @@ fun HomeScreen(
                 "Sessão ${activeSessionId.take(8)} · ${remoteSessionState.status.name.lowercase()}"
             } else {
                 "Conta conectada · aguardando sessão"
+            },
+            trailing = {
+                StatusPill(
+                    text = if (isWatchConnected) "Relógio conectado" else "Relógio desconectado",
+                    tone = if (isWatchConnected) StatusPillTone.Success else StatusPillTone.Alert
+                )
             }
         )
 

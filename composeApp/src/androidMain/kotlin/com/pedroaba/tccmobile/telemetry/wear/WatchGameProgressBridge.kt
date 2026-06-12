@@ -12,11 +12,34 @@ class WatchGameProgressBridge(context: Context) {
     private val nodeClient = Wearable.getNodeClient(appContext)
     private val messageClient = Wearable.getMessageClient(appContext)
 
+    fun startTelemetry() {
+        publishControlCommand(CONTROL_COMMAND_START)
+    }
+
+    fun stopTelemetry() {
+        publishControlCommand(CONTROL_COMMAND_STOP)
+    }
+
     fun publish(telemetryState: TelemetryState, snapshot: GameSnapshot, sessionConfig: SessionConfig) {
         val payload = buildPayload(telemetryState, snapshot, sessionConfig).toByteArray(Charsets.UTF_8)
         nodeClient.connectedNodes.addOnSuccessListener { nodes ->
             nodes.forEach { node ->
                 messageClient.sendMessage(node.id, MESSAGE_PATH, payload)
+            }
+        }
+    }
+
+    private fun publishControlCommand(command: String) {
+        val payload = JSONObject()
+            .put("tipo", "telemetry_control")
+            .put("command", command)
+            .put("timestamp", System.currentTimeMillis())
+            .toString()
+            .toByteArray(Charsets.UTF_8)
+
+        nodeClient.connectedNodes.addOnSuccessListener { nodes ->
+            nodes.forEach { node ->
+                messageClient.sendMessage(node.id, CONTROL_MESSAGE_PATH, payload)
             }
         }
     }
@@ -54,5 +77,8 @@ class WatchGameProgressBridge(context: Context) {
 
     private companion object {
         const val MESSAGE_PATH = "/game-progress"
+        const val CONTROL_MESSAGE_PATH = "/telemetry-control"
+        const val CONTROL_COMMAND_START = "start"
+        const val CONTROL_COMMAND_STOP = "stop"
     }
 }

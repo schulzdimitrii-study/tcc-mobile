@@ -273,6 +273,7 @@ class MainActivity : ComponentActivity() {
                             hordes = remoteSessionState.hordes,
                             selectedHordeId = remoteSessionState.selectedHorde?.id,
                             selectedDistanceKm = selectedDistanceKm,
+                            isWatchConnected = navTelemetryState.availability.hasWatch,
                             hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
                             hordeErrorMessage = remoteSessionState.errorMessage,
                             onHordeSelected = onlineSessionRepository::selectHorde,
@@ -373,12 +374,13 @@ class MainActivity : ComponentActivity() {
                     com.pedroaba.tccmobile.features.home.screens.HomeScreen(
                         userName = session.name.substringBefore(" ").ifBlank { session.name },
                         currentUserId = session.userId,
-                        remoteSessionState = remoteSessionState,
-                        hordes = remoteSessionState.hordes,
-                        selectedHordeId = remoteSessionState.selectedHorde?.id,
-                        selectedDistanceKm = selectedDistanceKm,
-                        hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
-                        hordeErrorMessage = remoteSessionState.errorMessage,
+                            remoteSessionState = remoteSessionState,
+                            hordes = remoteSessionState.hordes,
+                            selectedHordeId = remoteSessionState.selectedHorde?.id,
+                            selectedDistanceKm = selectedDistanceKm,
+                            isWatchConnected = navTelemetryState.availability.hasWatch,
+                            hordeCatalogStatus = remoteSessionState.hordeCatalogStatus,
+                            hordeErrorMessage = remoteSessionState.errorMessage,
                         onHordeSelected = onlineSessionRepository::selectHorde,
                         onDistanceSelected = { selectedDistanceKm = it },
                         onReloadHordes = { loadHordesForSession(session) },
@@ -600,6 +602,7 @@ class MainActivity : ComponentActivity() {
                 pendingTelemetryStart = false
                 loadLeaderboardForSession(authenticatedSession)
                 telemetryRuntime.repository.startSession()
+                watchGameProgressBridge.startTelemetry()
                 TelemetryForegroundService.start(this@MainActivity)
             } else {
                 pendingTelemetryStart = false
@@ -651,6 +654,9 @@ class MainActivity : ComponentActivity() {
     private fun stopLocalTelemetrySession(clearRemoteError: Boolean = true) {
         pendingTelemetryStart = false
         telemetryRuntime.repository.stopSession()
+        if (::watchGameProgressBridge.isInitialized) {
+            watchGameProgressBridge.stopTelemetry()
+        }
         if (clearRemoteError && onlineSessionRepository.state.value.status == RemoteSessionStatus.ERROR) {
             onlineSessionRepository.clearActiveSession()
         }

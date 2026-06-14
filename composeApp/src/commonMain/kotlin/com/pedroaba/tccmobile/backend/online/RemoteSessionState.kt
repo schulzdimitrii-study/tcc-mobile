@@ -112,11 +112,27 @@ data class RemoteSessionState(
         errorMessage = null
     )
 
-    fun onGameStateUpdated(newGameState: GameStateResponse): RemoteSessionState = copy(
-        status = RemoteSessionStatus.ACTIVE,
-        gameState = newGameState,
-        errorMessage = null
-    )
+    fun onGameStateUpdated(newGameState: GameStateResponse): RemoteSessionState {
+        val currentGameState = gameState
+        val currentTimestamp = currentGameState?.serverTimestampMs
+        val newTimestamp = newGameState.serverTimestampMs
+        val isOlderUpdateForSameParticipant = currentGameState != null &&
+            currentGameState.sessionId == newGameState.sessionId &&
+            currentGameState.userId == newGameState.userId &&
+            currentTimestamp != null &&
+            newTimestamp != null &&
+            newTimestamp < currentTimestamp
+
+        return if (isOlderUpdateForSameParticipant) {
+            copy(status = RemoteSessionStatus.ACTIVE, errorMessage = null)
+        } else {
+            copy(
+                status = RemoteSessionStatus.ACTIVE,
+                gameState = newGameState,
+                errorMessage = null
+            )
+        }
+    }
 
     fun onRealtimeFailure(message: String): RemoteSessionState = copy(
         status = if (status == RemoteSessionStatus.ENDING || status == RemoteSessionStatus.IDLE) {

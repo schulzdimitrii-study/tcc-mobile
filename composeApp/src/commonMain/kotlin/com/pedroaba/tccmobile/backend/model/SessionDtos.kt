@@ -35,7 +35,9 @@ data class BiometricDataMessage(
     val speed: Double,
     val pace: Double,
     val accumulatedDistance: Double,
-    val accumulatedCalories: Double
+    val accumulatedCalories: Double,
+    val latencyTraceId: String? = null,
+    val clientSentAtElapsedMs: Long? = null
 )
 
 @Serializable
@@ -74,5 +76,9 @@ data class GameStateResponse(
     val playerSpeed: Double,
     val hordeSpeed: Double,
     val raceProgress: Double,
-    val gameStatus: GameStatusDto
+    val gameStatus: GameStatusDto,
+    val latencyTraceId: String? = null,
+    val clientSentAtElapsedMs: Long? = null,
+    val backendProcessingMs: Long? = null,
+    val serverTimestampMs: Long? = null
 )

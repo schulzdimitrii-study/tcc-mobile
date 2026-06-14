@@ -29,7 +29,8 @@ fun gameResultDialogContentFor(result: String): GameResultDialogContent? = when 
 @Composable
 fun GameResultDialog(
     content: GameResultDialogContent,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onPrimaryAction: () -> Unit = onDismiss
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -46,7 +47,7 @@ fun GameResultDialog(
             )
         },
         confirmButton = {
-            Button(onClick = onDismiss) {
+            Button(onClick = onPrimaryAction) {
                 Text(content.primaryAction)
             }
         }

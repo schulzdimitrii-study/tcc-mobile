@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -15,10 +16,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -54,6 +57,7 @@ import com.pedroaba.tccmobile.theme.AppTheme
 import com.pedroaba.tccmobile.theme.TccMobileTheme
 import com.pedroaba.tccmobile.ui.components.AppCallout
 import kotlinx.coroutines.flow.StateFlow
+import kotlin.math.abs
 import kotlin.math.round
 import kotlin.math.roundToInt
 
@@ -76,6 +80,7 @@ fun GameScreen(
         val isSceneLoading by gameController.isSceneLoading.collectAsState()
         val isActive by gameController.isActive.collectAsState()
         var dismissedResult by remember { mutableStateOf<String?>(null) }
+        var isShowingResultScreen by remember { mutableStateOf(false) }
         val telemetryState = telemetryStateFlow?.collectAsState()?.value ?: TelemetryState()
         val isRemotePreparing = remoteSessionState.status == RemoteSessionStatus.STARTING ||
             remoteSessionState.status == RemoteSessionStatus.CONNECTING
@@ -97,6 +102,7 @@ fun GameScreen(
         LaunchedEffect(snapshot.result) {
             if (snapshot.result == "running") {
                 dismissedResult = null
+                isShowingResultScreen = false
             }
         }
 
@@ -149,10 +155,25 @@ fun GameScreen(
             modifier = Modifier.fillMaxSize(),
             color = MaterialTheme.colorScheme.background
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-            ) {
+            if (isShowingResultScreen) {
+                GameResultScreen(
+                    summary = buildGameResultSummary(
+                        snapshot = snapshot,
+                        telemetryState = telemetryState,
+                        remoteGameState = effectiveGameState
+                    ),
+                    onBackToGame = { isShowingResultScreen = false },
+                    onStartNewSession = {
+                        dismissedResult = snapshot.result
+                        isShowingResultScreen = false
+                        onStartTelemetrySession?.invoke()
+                    }
+                )
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -283,16 +304,256 @@ fun GameScreen(
                     )
                 }
             }
+            }
         }
 
         val resultDialogContent = gameResultDialogContentFor(snapshot.result)
         if (resultDialogContent != null && dismissedResult != snapshot.result) {
             GameResultDialog(
                 content = resultDialogContent,
-                onDismiss = { dismissedResult = snapshot.result }
+                onDismiss = { dismissedResult = snapshot.result },
+                onPrimaryAction = {
+                    dismissedResult = snapshot.result
+                    if (snapshot.result == "escaped") {
+                        isShowingResultScreen = true
+                    } else {
+                        onStartTelemetrySession?.invoke()
+                    }
+                }
             )
         }
     }
+}
+
+internal data class GameResultSummary(
+    val title: String,
+    val subtitle: String,
+    val stats: List<GameResultMetric>,
+    val details: List<GameResultMetric>
+)
+
+internal data class GameResultMetric(
+    val label: String,
+    val value: String
+)
+
+internal fun buildGameResultSummary(
+    snapshot: GameSnapshot,
+    telemetryState: TelemetryState,
+    remoteGameState: GameStateResponse?
+): GameResultSummary {
+    val isVictory = remoteGameState?.gameStatus == GameStatusDto.ESCAPED || snapshot.result == "escaped"
+    val distance = remoteGameState?.playerPosition ?: snapshot.distance
+    val progress = remoteGameState?.raceProgress ?: (snapshot.performanceScore * 100.0)
+    val risk = snapshot.risk * 100.0
+    val distanceToHorde = remoteGameState?.distancePlayerToHorde
+    val runnerSpeed = remoteGameState?.playerSpeed ?: snapshot.runnerVelocity
+    val hordeSpeed = remoteGameState?.hordeSpeed ?: snapshot.hordeVelocity
+    val bpm = telemetryState.latestBiofeedbackSample?.bpm
+
+    val details = buildList {
+        if (distanceToHorde != null) {
+            add(GameResultMetric("Distância da horda", "${formatFixed(distanceToHorde, 2)} km"))
+        }
+        add(GameResultMetric("Velocidade média", "${formatFixed(runnerSpeed, 2)} m/s"))
+        add(GameResultMetric("Velocidade da horda", "${formatFixed(hordeSpeed, 2)} m/s"))
+        if (bpm != null) {
+            add(GameResultMetric("Batimentos", "$bpm bpm"))
+        }
+    }
+
+    return GameResultSummary(
+        title = if (isVictory) "Vitória" else "Derrota",
+        subtitle = if (isVictory) {
+            "Você escapou da horda."
+        } else {
+            "A horda alcançou você."
+        },
+        stats = listOf(
+            GameResultMetric("Tempo", formatDuration(snapshot.elapsedSeconds)),
+            GameResultMetric("Distância", "${formatFixed(distance, 2)} km"),
+            GameResultMetric("Progresso", "${progress.coerceIn(0.0, 100.0).roundToInt()}%"),
+            GameResultMetric("Risco final", "${risk.coerceIn(0.0, 100.0).roundToInt()}%")
+        ),
+        details = details
+    )
+}
+
+@Composable
+private fun GameResultScreen(
+    summary: GameResultSummary,
+    onBackToGame: () -> Unit,
+    onStartNewSession: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp)
+            .verticalScroll(rememberScrollState())
+    ) {
+        Spacer(modifier = Modifier.height(24.dp))
+        Text(
+            text = "RESULTADO",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Text(
+            text = summary.title,
+            style = MaterialTheme.typography.headlineMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = summary.subtitle,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            summary.stats.chunked(2).forEach { rowMetrics ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    rowMetrics.forEach { metric ->
+                        ResultMetricCard(
+                            metric = metric,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    if (rowMetrics.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.small,
+            color = AppTheme.colors.card,
+            border = BorderStroke(1.dp, AppTheme.colors.border)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text(
+                    text = "DETALHES",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                summary.details.forEach { metric ->
+                    ResultDetailRow(metric = metric)
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Button(
+            onClick = onStartNewSession,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Nova sessão")
+        }
+        Spacer(modifier = Modifier.height(10.dp))
+        OutlinedButton(
+            onClick = onBackToGame,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Voltar ao jogo")
+        }
+    }
+}
+
+@Composable
+private fun ResultMetricCard(
+    metric: GameResultMetric,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        modifier = modifier.height(96.dp),
+        shape = MaterialTheme.shapes.small,
+        color = AppTheme.colors.card,
+        border = BorderStroke(1.dp, AppTheme.colors.border)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = metric.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = metric.value,
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+}
+
+@Composable
+private fun ResultDetailRow(
+    metric: GameResultMetric
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = metric.label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = metric.value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+    }
+}
+
+private fun formatDuration(totalSeconds: Double): String {
+    val safeTotalSeconds = if (totalSeconds.isFinite() && totalSeconds > 0.0) {
+        totalSeconds.roundToInt()
+    } else {
+        0
+    }
+    val minutes = safeTotalSeconds / 60
+    val seconds = safeTotalSeconds % 60
+    return "${minutes}min ${seconds.toString().padStart(2, '0')}s"
+}
+
+private fun formatFixed(value: Double, decimals: Int): String {
+    if (!value.isFinite()) return "--"
+    val factor = powerOfTen(decimals)
+    val scaled = round(abs(value) * factor.toDouble()).toLong()
+    val whole = scaled / factor
+    val fraction = (scaled % factor).toString().padStart(decimals, '0')
+    val sign = if (value < 0) "-" else ""
+    return if (decimals == 0) {
+        "$sign$whole"
+    } else {
+        "$sign$whole.$fraction"
+    }
+}
+
+private fun powerOfTen(decimals: Int): Long {
+    var result = 1L
+    repeat(decimals.coerceAtLeast(0)) {
+        result *= 10L
+    }
+    return result
 }
 
 private val defaultGameSessionConfig = SessionConfig(

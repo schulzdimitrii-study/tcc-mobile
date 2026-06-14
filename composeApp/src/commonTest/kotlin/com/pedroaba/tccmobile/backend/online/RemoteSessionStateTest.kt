@@ -85,6 +85,37 @@ class RemoteSessionStateTest {
     }
 
     @Test
+    fun `older game state update does not overwrite newer state for same user and session`() {
+        val newerGameState = GameStateResponse(
+            sessionId = "session-1",
+            userId = "u1",
+            playerPosition = 0.7,
+            hordePosition = 0.3,
+            distanceToGoal = 0.3,
+            distancePlayerToHorde = 0.4,
+            playerSpeed = 10.0,
+            hordeSpeed = 8.0,
+            raceProgress = 70.0,
+            gameStatus = GameStatusDto.RUNNING,
+            serverTimestampMs = 2_000L
+        )
+        val olderGameState = newerGameState.copy(
+            playerPosition = 0.2,
+            distanceToGoal = 0.8,
+            raceProgress = 20.0,
+            serverTimestampMs = 1_000L
+        )
+
+        val updated = RemoteSessionState(
+            sessionId = "session-1",
+            status = RemoteSessionStatus.ACTIVE,
+            gameState = newerGameState
+        ).onGameStateUpdated(olderGameState)
+
+        assertEquals(newerGameState, updated.gameState)
+    }
+
+    @Test
     fun `hordes loaded selects first horde by default`() {
         val hordes = listOf(
             HordeDto(id = "horde-1", name = "Centro", difficulty = "EASY"),

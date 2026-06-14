@@ -51,6 +51,29 @@ class RemoteSessionMapperTest {
     }
 
     @Test
+    fun `maps latency metadata into backend biometric payload`() {
+        val telemetryState = TelemetryState(
+            session = MovementSession(totalDistanceMeters = 420.0),
+            latestBiofeedbackSample = BiofeedbackSample(
+                timestampMs = 5_200L,
+                bpm = 148
+            )
+        )
+
+        val message = buildBiometricDataMessage(
+            sessionId = "session-123",
+            userId = "user-456",
+            telemetryState = telemetryState,
+            timestampMs = 1L,
+            latencyTraceId = "trace-789",
+            clientSentAtElapsedMs = 12_345L
+        )
+
+        assertEquals("trace-789", message?.latencyTraceId)
+        assertEquals(12_345L, message?.clientSentAtElapsedMs)
+    }
+
+    @Test
     fun `returns null when there is no signal`() {
         val message = buildBiometricDataMessage(
             sessionId = "session-123",

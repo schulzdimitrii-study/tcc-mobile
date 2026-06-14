@@ -1,6 +1,7 @@
 package com.pedroaba.tccmobile.backend.online
 
 import android.util.Log
+import android.os.SystemClock
 import com.pedroaba.tccmobile.backend.model.StartSessionRequest
 import com.pedroaba.tccmobile.game.telemetry.model.TelemetryState
 import kotlinx.coroutines.CompletableDeferred
@@ -14,12 +15,15 @@ class OnlineSessionRepository(
     private val sessionApi: SessionApi,
     private val stompWebSocketClient: StompWebSocketClient,
     private val currentTimeMsProvider: () -> Long = { System.currentTimeMillis() },
+    private val latencyTimeMsProvider: () -> Long = { SystemClock.elapsedRealtime() },
     private val connectionTimeoutMs: Long = 15_000L
 ) {
     private val _state = MutableStateFlow(RemoteSessionState())
     val state: StateFlow<RemoteSessionState> = _state.asStateFlow()
 
     private var lastTelemetrySentAtMs: Long = 0L
+    private val pendingLatencyTraces = mutableMapOf<String, Long>()
+    private val latencyMetricsCollector = LatencyMetricsCollector()
 
     suspend fun loadHordes(token: String): Result<Unit> {
         _state.value = _state.value.onHordesLoading()
@@ -118,6 +122,7 @@ class OnlineSessionRepository(
                         _state.value = _state.value.onLeaderboardUpdated(leaderboard)
                     },
                     onGameState = { gameState ->
+                        recordGameStateLatency(gameState)
                         if (gameState.userId == currentUserId) {
                             Log.d(
                                 REALTIME_LOG_TAG,
@@ -166,8 +171,11 @@ class OnlineSessionRepository(
             ?: return Result.failure(IllegalStateException("Nenhuma sessao online em andamento."))
 
         _state.value = _state.value.onSessionEndRequested()
+        logLatencySummary()
         stompWebSocketClient.disconnect()
         lastTelemetrySentAtMs = 0L
+        pendingLatencyTraces.clear()
+        latencyMetricsCollector.clear()
 
         return sessionApi.endSession(token, sessionId).fold(
             onSuccess = {
@@ -199,11 +207,15 @@ class OnlineSessionRepository(
         val now = currentTimeMsProvider()
         if (now - lastTelemetrySentAtMs < 1_000L) return false
 
+        val clientSentAtElapsedMs = latencyTimeMsProvider()
+        val latencyTraceId = "$sessionId-$userId-$clientSentAtElapsedMs"
         val message = buildBiometricDataMessage(
             sessionId = sessionId,
             userId = userId,
             telemetryState = telemetryState,
-            timestampMs = now
+            timestampMs = now,
+            latencyTraceId = latencyTraceId,
+            clientSentAtElapsedMs = clientSentAtElapsedMs
         )
         if (message == null) {
             Log.d(REALTIME_LOG_TAG, "telemetry_send_skipped reason=no_signal sessionId=$sessionId userId=$userId")
@@ -213,6 +225,7 @@ class OnlineSessionRepository(
         val sent = stompWebSocketClient.sendBiometricData(message)
         if (sent) {
             lastTelemetrySentAtMs = now
+            pendingLatencyTraces[latencyTraceId] = clientSentAtElapsedMs
             Log.d(
                 REALTIME_LOG_TAG,
                 "telemetry_send_confirmed sessionId=$sessionId userId=$userId distanceKm=${message.accumulatedDistance} speedKmh=${message.speed} bpm=${message.bpm}"
@@ -224,19 +237,49 @@ class OnlineSessionRepository(
     }
 
     fun clear() {
+        logLatencySummary()
         stompWebSocketClient.disconnect()
+        pendingLatencyTraces.clear()
+        latencyMetricsCollector.clear()
     }
 
     fun clearActiveSession() {
+        logLatencySummary()
         stompWebSocketClient.disconnect()
         lastTelemetrySentAtMs = 0L
+        pendingLatencyTraces.clear()
+        latencyMetricsCollector.clear()
         _state.value = _state.value.onSessionEnded()
     }
 
     fun failActiveSession(message: String) {
+        logLatencySummary()
         stompWebSocketClient.disconnect()
         lastTelemetrySentAtMs = 0L
+        pendingLatencyTraces.clear()
+        latencyMetricsCollector.clear()
         _state.value = _state.value.onRealtimeFailure(message)
+    }
+
+    private fun recordGameStateLatency(gameState: com.pedroaba.tccmobile.backend.model.GameStateResponse) {
+        val traceId = gameState.latencyTraceId ?: return
+        val sentAt = pendingLatencyTraces.remove(traceId)
+            ?: gameState.clientSentAtElapsedMs
+            ?: return
+        val endToEndMs = (latencyTimeMsProvider() - sentAt).coerceAtLeast(0)
+        latencyMetricsCollector.recordEndToEndLatency(endToEndMs)
+        Log.d(
+            REALTIME_LOG_TAG,
+            "[LATENCY_E2E] sessionId=${gameState.sessionId} userId=${gameState.userId} traceId=$traceId endToEndMs=$endToEndMs backendProcessingMs=${gameState.backendProcessingMs}"
+        )
+    }
+
+    private fun logLatencySummary() {
+        val summary = latencyMetricsCollector.summary() ?: return
+        Log.d(
+            REALTIME_LOG_TAG,
+            "[LATENCY_SUMMARY] count=${summary.count} meanMs=${summary.meanMs} medianMs=${summary.medianMs} p95Ms=${summary.p95Ms} maxMs=${summary.maxMs}"
+        )
     }
 
     private companion object {

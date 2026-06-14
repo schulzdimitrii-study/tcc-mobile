@@ -32,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import com.pedroaba.tccmobile.backend.model.GameStateResponse
 import com.pedroaba.tccmobile.backend.model.GameStatusDto
@@ -303,10 +304,7 @@ private val defaultGameSessionConfig = SessionConfig(
 private fun GameProgressCard(
     remoteGameState: GameStateResponse?
 ) {
-    val runnerProgress = remoteGameState
-        ?.raceProgress
-        ?.let { (it / 100.0).coerceIn(0.0, 1.0).toFloat() }
-        ?: 0f
+    val runnerProgress = normalizeRaceProgressPercent(remoteGameState?.raceProgress)
     val distanceLabel = remoteGameState?.playerPosition?.let { "${roundToTwoDecimals(it)} km" } ?: "--"
     val remainingLabel = remoteGameState?.distanceToGoal?.let { "${roundToTwoDecimals(it)} km" } ?: "--"
     val hordeLabel = remoteGameState?.hordePosition?.let { "${roundToTwoDecimals(it)} km" } ?: "--"
@@ -369,10 +367,12 @@ private fun RacePositionBar(
         modifier = Modifier
             .fillMaxWidth()
             .height(42.dp)
+            .testTag(RACE_POSITION_BAR_TAG)
     ) {
+        val normalizedProgress = runnerProgress.coerceIn(0f, 1f)
         val markerSize = 18.dp
-        val usableWidth = maxWidth - markerSize
-        val runnerOffset = usableWidth * runnerProgress
+        val usableWidth = (maxWidth - markerSize).coerceAtLeast(0.dp)
+        val runnerOffset = usableWidth * normalizedProgress
 
         Box(
             modifier = Modifier
@@ -384,7 +384,7 @@ private fun RacePositionBar(
         )
         Box(
             modifier = Modifier
-                .fillMaxWidth(runnerProgress)
+                .fillMaxWidth(normalizedProgress)
                 .height(6.dp)
                 .align(Alignment.CenterStart)
                 .clip(CircleShape)
@@ -395,6 +395,7 @@ private fun RacePositionBar(
             modifier = Modifier
                 .align(Alignment.CenterStart)
                 .offset(x = runnerOffset)
+                .testTag(RACE_POSITION_MARKER_TAG)
         )
         Text(
             text = "🏁",
@@ -420,6 +421,14 @@ private fun PositionMarker(
 private fun roundToOneDecimal(value: Double): Double = round(value * 10.0) / 10.0
 
 private fun roundToTwoDecimals(value: Double): Double = round(value * 100.0) / 100.0
+
+internal fun normalizeRaceProgressPercent(value: Double?): Float {
+    if (value == null || !value.isFinite() || value <= 0.0) return 0f
+    return (value / 100.0).coerceIn(0.0, 1.0).toFloat()
+}
+
+internal const val RACE_POSITION_BAR_TAG = "race-position-bar"
+internal const val RACE_POSITION_MARKER_TAG = "race-position-marker"
 
 private fun RemoteSessionStatus.loadingLabel(): String = when (this) {
     RemoteSessionStatus.STARTING -> "Abrindo sessao no servidor..."

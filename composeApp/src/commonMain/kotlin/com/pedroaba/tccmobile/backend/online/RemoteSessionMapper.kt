@@ -8,7 +8,9 @@ fun buildBiometricDataMessage(
     sessionId: String,
     userId: String,
     telemetryState: TelemetryState,
-    timestampMs: Long
+    timestampMs: Long,
+    latencyTraceId: String? = null,
+    clientSentAtElapsedMs: Long? = null
 ): BiometricDataMessage? {
     val location = telemetryState.latestLocationPoint
     val acceleration = telemetryState.latestAccelerationSample
@@ -33,7 +35,9 @@ fun buildBiometricDataMessage(
         speed = speedKmH,
         pace = pace,
         accumulatedDistance = roundToFourDecimals(telemetryState.session.totalDistanceMeters / 1_000.0),
-        accumulatedCalories = 0.0
+        accumulatedCalories = 0.0,
+        latencyTraceId = latencyTraceId,
+        clientSentAtElapsedMs = clientSentAtElapsedMs
     )
 }
 
